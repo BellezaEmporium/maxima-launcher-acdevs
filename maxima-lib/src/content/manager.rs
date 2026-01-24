@@ -1,3 +1,4 @@
+use crate::content::exclusion::get_exclusion_list;
 use std::{
     path::PathBuf,
     sync::{
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{fs, sync::Notify};
 use tokio_util::sync::CancellationToken;
+use globset::GlobSet;
 
 use crate::{
     content::{
@@ -156,7 +158,18 @@ impl GameDownloader {
         debug!("URL: {}", url.url());
 
         let downloader = ZipDownloader::new(url.url()).await?;
-        let entries = downloader.manifest().entries().to_vec();
+        let exclusion_list = get_exclusion_list(game.offer_id.clone());
+        let mut entries = Vec::new();
+        for ele in downloader.manifest().entries() 
+        {
+            // TODO: Filtering
+            if exclusion_list.is_match(&ele.name())
+            {
+                info!("Excluding file from download: {}", ele.name());
+                continue;
+            }
+            entries.push(ele.clone());
+        }
 
         let total_count = entries.len();
         let total_bytes = entries

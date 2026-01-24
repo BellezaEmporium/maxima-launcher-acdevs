@@ -68,6 +68,7 @@ gethostname = "1.1.0"
 thiserror = { workspace = true }
 url = { workspace = true }
 http = "1.4.2"
+globset = "0.4"
 generic-array = "1.4.4"
 rustls-pki-types = "1.15.1"
 tokio-stream = "0.1.19"
