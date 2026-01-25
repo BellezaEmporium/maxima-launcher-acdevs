@@ -11,11 +11,13 @@ use super::{
         ServiceUserGameProduct,
     },
 };
-#[cfg(unix)]
-use crate::unix::fs::case_insensitive_path;
-use crate::util::native::{NativeError, SafeStr};
-use crate::util::registry::{RegistryError, parse_partial_registry_path, parse_registry_path};
+use crate::util::registry::{RegistryError, parse_registry_path_json};
+use crate::{
+    gameinfo::load_game_info_from_json,
+    util::native::{NativeError, SafeStr, maxima_dir},
+};
 use derive_getters::Getters;
+use log::info;
 use std::{collections::HashMap, path::PathBuf, time::SystemTimeError};
 use thiserror::Error;
 
@@ -56,37 +58,55 @@ pub struct OwnedOffer {
 }
 
 impl OwnedOffer {
-    pub async fn is_installed(&self) -> bool {
+    #[cfg(windows)]
+    pub async fn check_install_win_registry(&self) -> bool {
+        use crate::util::registry::parse_registry_path_regkey;
+
         let Some(path) = &self.offer.install_check_override().as_ref() else {
             log::warn!("[{}] No install_check_override", self.slug);
             return false;
         };
-        let path = match parse_registry_path(path).await {
-            Ok(p) => p,
-            Err(_) => {
-                return false;
-            }
-        };
-        if path.starts_with("[") {
-            log::warn!("[{}] Registry key unresolved: {:?}", self.slug, path);
-            return false;
+        if let Ok(manifest_path) = parse_registry_path_regkey(path).await {
+            use crate::gameinfo::GameInstallInfo;
+
+            let gamedir = manifest_path.ancestors().nth(2).unwrap().to_path_buf(); // Strip off the manifest and just leave the game directory
+            let game_install_info: GameInstallInfo = GameInstallInfo::new(gamedir, None);
+            game_install_info.save_to_json(&self.slug);
+            manifest_path.exists()
+        } else {
+            false
         }
-        let exists = path.exists();
-        log::debug!(
-            "[{}] install check path {:?} exists={}",
-            self.slug,
-            path,
-            exists
-        );
-        exists
     }
 
+    pub async fn is_installed(&self) -> bool {
+        let maxima_dir = match maxima_dir() {
+            Ok(dir) => dir,
+            Err(_) => return false,
+        };
+
+        let game_info_path = maxima_dir
+            .join("gameinfo")
+            .join(format!("{}.json", &self.slug));
+
+        #[cfg(windows)]
+        match game_info_path.exists() {
+            true => return true,
+            false => return self.check_install_win_registry().await,
+        }
+
+        #[cfg(not(windows))]
+        game_info_path.exists()
+    }
+
+    // This is unused
     pub async fn install_check_path(&self) -> Result<String, ManifestError> {
-        Ok(parse_registry_path(
-            self.offer
+        Ok(parse_registry_path_json(
+            &self
+                .offer
                 .install_check_override()
                 .as_ref()
                 .ok_or(ManifestError::NoInstallPath(self.slug.clone()))?,
+            Some(&self.slug),
         )
         .await?
         .safe_str()?
@@ -106,7 +126,7 @@ impl OwnedOffer {
         };
 
         if let Some(path) = path {
-            Ok(parse_registry_path(path).await?)
+            Ok(parse_registry_path_json(path, Some(&self.slug)).await?)
         } else {
             Err(LibraryError::NoPath(self.slug.clone()))
         }
@@ -130,33 +150,17 @@ impl OwnedOffer {
     }
 
     pub async fn local_manifest(&self) -> Result<Option<Box<dyn GameManifest>>, ManifestError> {
-        let path = if self
-            .offer
-            .install_check_override()
-            .as_ref()
-            .ok_or(ManifestError::NoInstallPath(self.slug.clone()))?
-            .contains("installerdata.xml")
-        {
-            let ic_path = PathBuf::from(self.install_check_path().await?);
-            #[cfg(unix)]
-            let ic_path = case_insensitive_path(ic_path);
-            ic_path
-        } else {
-            let path = PathBuf::from(
-                parse_partial_registry_path(
-                    self.offer
-                        .install_check_override()
-                        .as_ref()
-                        .ok_or(ManifestError::NoInstallPath(self.slug.clone()))?,
-                )
-                .await?
-                .safe_str()?
-                .to_owned(),
-            );
-
-            path.join(MANIFEST_RELATIVE_PATH)
+        info!("Checking local manifest for `{}`", self.slug);
+        let game_install_info = match load_game_info_from_json(&self.slug) {
+            Ok(info) => info,
+            Err(_) => return Ok(None), // No info file yet, placeholder for now
         };
 
+        let path = game_install_info.path().join(MANIFEST_RELATIVE_PATH);
+        info!("Checking for manifest at `{}`", path.display());
+        if !path.exists() {
+            return Ok(None);
+        }
         Ok(Some(manifest::read(path).await?))
     }
 

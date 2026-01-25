@@ -17,15 +17,26 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{fs, sync::Notify};
 use tokio_util::sync::CancellationToken;
-use globset::GlobSet;
 
 use crate::{
     content::{
-        ContentService, downloader::{DownloadError, ZipDownloader}, zip::{CompressionType, ZipError, ZipFileEntry},
-    }, core::{
-        MaximaEvent, auth::storage::LockedAuthStorage, background_service::{BACKGROUND_SERVICE_PORT, ServiceTouchupRequest}, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::ServiceLayerError,
-    }, util::native::{NativeError, maxima_dir},
+        ContentService,
+        downloader::{DownloadError, ZipDownloader},
+        exclusion::get_exclusion_list,
+        zip::{CompressionType, ZipError, ZipFileEntry},
+    },
+    core::{
+        MaximaEvent,
+        auth::storage::LockedAuthStorage,
+        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
+        service_layer::ServiceLayerError,
+    },
+    gameinfo::GameInstallInfo,
+    util::native::{NativeError, maxima_dir},
 };
+
+#[cfg(unix)]
+use crate::core::launch::mx_linux_setup;
 
 const QUEUE_FILE: &str = "download_queue.json";
 const MAX_CONCURRENT_DOWNLOADS: usize = 16;
@@ -35,6 +46,8 @@ pub struct QueuedGame {
     offer_id: String,
     build_id: String,
     path: PathBuf,
+    slug: String,
+    wine_prefix: Option<PathBuf>,
 }
 
 #[derive(Default, Getters, Serialize, Deserialize)]
@@ -136,6 +149,9 @@ type ProgressCallback = Box<dyn Fn(usize) + Send>;
 
 pub struct GameDownloader {
     offer_id: String,
+    slug: String,
+    path: PathBuf,
+    wine_prefix: Option<PathBuf>,
     downloader: Arc<ZipDownloader>,
     entries: Vec<ZipFileEntry>,
     output_dir: PathBuf,
@@ -163,9 +179,8 @@ impl GameDownloader {
         for ele in downloader.manifest().entries() 
         {
             // TODO: Filtering
-            if exclusion_list.is_match(&ele.name())
-            {
-                info!("Excluding file from download: {}", ele.name());
+            if exclusion_list.is_match(&ele.name()) {
+                // info!("Excluding file from download: {}", ele.name()); Spams if a lot of files are excluded
                 continue;
             }
             entries.push(ele.clone());
@@ -180,6 +195,9 @@ impl GameDownloader {
 
         Ok(GameDownloader {
             offer_id: game.offer_id.to_owned(),
+            slug: game.slug.to_owned(),
+            path: game.path.to_owned(),
+            wine_prefix: game.wine_prefix.clone(),
             downloader: Arc::new(downloader),
             entries,
             output_dir: game.path.clone(),
@@ -196,6 +214,8 @@ impl GameDownloader {
             self.prepare_download_vars();
         let notify_done = notify.clone();
 
+        let slug = self.slug.clone();
+        let game_install_info = GameInstallInfo::new(self.path.clone(), self.wine_prefix.clone());
         tokio::spawn(async move {
             let dl = GameDownloader::start_downloads(
                 downloader_arc,
@@ -204,6 +224,8 @@ impl GameDownloader {
                 completed_bytes,
                 notify,
                 output_dir,
+                slug,
+                game_install_info,
             )
             .await;
             if let Err(err) = dl {
@@ -240,6 +262,8 @@ impl GameDownloader {
         completed_bytes: Arc<AtomicUsize>,
         notify: Arc<Notify>,
         output_dir: PathBuf,
+        slug: String,
+        game_install_info: GameInstallInfo,
     ) -> Result<(), DownloaderError> {
         let mut handles = Vec::with_capacity(entries.len());
 
@@ -283,6 +307,8 @@ impl GameDownloader {
             return Ok(());
         }
 
+        #[cfg(unix)]
+        mx_linux_setup(Some(&slug)).await?; // Wine Prefix needs setup before touchup
         info!("Files downloaded, running touchup...");
         let client = reqwest::Client::new();
         let resp = client

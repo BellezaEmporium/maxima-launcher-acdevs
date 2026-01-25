@@ -1,14 +1,18 @@
+use regex::Regex;
+use std::ffi::OsString;
+use std::fs::create_dir_all;
+use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::{
     collections::HashMap,
     env,
     ffi::OsStr,
-    fs::{File, create_dir_all, remove_dir_all, remove_file},
+    fs::{File, remove_dir_all, remove_file},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
 };
 
-use flate2::read::GzDecoder;
 use log::{info, warn};
 use regex::Regex;
 use reqwest::StatusCode;
@@ -21,10 +25,15 @@ use tokio::{
 };
 use xz2::read::XzDecoder;
 
-use crate::util::{
-    github::{GithubRelease, fetch_github_release, fetch_github_releases, github_download_asset},
-    native::{DownloadError, NativeError, SafeParent, SafeStr, WineError, maxima_dir},
-    registry::RegistryError,
+use crate::{
+    gameinfo::load_game_info_from_json,
+    util::{
+        github::{
+            GithubRelease, fetch_github_release, fetch_github_releases, github_download_asset,
+        },
+        native::{DownloadError, NativeError, SafeParent, SafeStr, WineError, maxima_dir},
+        registry::RegistryError,
+    },
 };
 
 static PROTON_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -69,9 +78,20 @@ struct Versions {
     umu: String,
 }
 
-/// Returns internal prtoton pfx path
-pub fn wine_prefix_dir() -> Result<PathBuf, NativeError> {
-    Ok(maxima_dir()?.join("wine/prefix"))
+/// Returns internal proton pfx path
+pub fn wine_prefix_dir(slug: Option<&str>) -> Result<PathBuf, NativeError> {
+    let game_install_info = load_game_info_from_json(slug.unwrap()).unwrap();
+    let prefix_path = game_install_info.wine_prefix().unwrap();
+
+    if !prefix_path.exists() {}
+    if let Err(err) = create_dir_all(&prefix_path) {
+        warn!(
+            "Failed to create wine prefix directory at {:?}: {}",
+            prefix_path, err
+        );
+        return Err(NativeError::Io(err));
+    }
+    Ok(prefix_path)
 }
 
 pub fn proton_dir() -> Result<PathBuf, NativeError> {
@@ -183,7 +203,7 @@ pub(crate) async fn install_runtime(
     };
 
     let res = match ureq::get(&runtime.url)
-        .set("User-Agent", "ArmchairDevelopers/Maxima")
+        .header("User-Agent", "ArmchairDevelopers/Maxima")
         .call()
     {
         Err(err) => return Err(NativeError::Download(DownloadError::Request1(err))),
@@ -195,7 +215,7 @@ pub(crate) async fn install_runtime(
     }
 
     let mut body: Vec<u8> = vec![];
-    res.into_reader().read_to_end(&mut body)?;
+    res.into_body().as_reader().read_to_end(&mut body)?;
 
     if path.exists() {
         remove_dir_all(&path)?;
@@ -234,17 +254,19 @@ fn get_wine_release() -> Result<GithubRelease, WineError> {
 }
 
 pub async fn run_wine_command<I: IntoIterator<Item = T>, T: AsRef<OsStr>>(
-    arg: T,
+    arg: OsString,
     args: Option<I>,
     cwd: Option<PathBuf>,
     want_output: bool,
     command_type: CommandType,
+    slug: Option<&str>,
 ) -> Result<String, NativeError> {
     let proton_path = proton_dir()?;
-    let proton_prefix_path = wine_prefix_dir()?;
+    let proton_prefix_path = wine_prefix_dir(slug).unwrap();
     let eac_path = eac_dir()?;
     let umu_bin = umu_bin()?;
 
+    info!("Wine Prefix: {:?}", proton_prefix_path);
     let wine_path =
         env::var("MAXIMA_WINE_COMMAND").unwrap_or_else(|_| umu_bin.to_string_lossy().to_string());
 
@@ -260,7 +282,7 @@ pub async fn run_wine_command<I: IntoIterator<Item = T>, T: AsRef<OsStr>>(
         .env("UMU_ZENITY", "1")
         .env("WINEDEBUG", "fixme-all")
         .env("LD_PRELOAD", "") // Fixes some log errors for some games
-        .arg(arg);
+        .arg(&arg);
 
     if !wine_path.ends_with("umu-run") {
         // wsock32 is used as a proxy for Northstar (Titanfall 2). TODO: provide user-facing option for this!
@@ -276,6 +298,11 @@ pub async fn run_wine_command<I: IntoIterator<Item = T>, T: AsRef<OsStr>>(
 
     if let Some(cwd) = cwd {
         child.current_dir(cwd);
+    } else if arg.to_string_lossy().contains("/") { // Some games (like Mass Effect LE) require the working directory to be set to the game directory, other it crashes
+        let mut cwd_dir = PathBuf::from(arg.clone());
+        cwd_dir.pop();
+        info!("Setting current working directory to: {:?}", cwd_dir);
+        child.current_dir(cwd_dir);
     }
 
     let status: ExitStatus;
@@ -329,8 +356,6 @@ pub(crate) async fn install_wine() -> Result<(), NativeError> {
         warn!("Failed to delete {:?} - {:?}", path, err);
     }
 
-    let _ = run_wine_command("", None::<[&str; 0]>, None, false, CommandType::Run).await;
-
     Ok(())
 }
 
@@ -375,7 +400,7 @@ fn extract_archive<R: Read + Sized>(
     Ok(())
 }
 
-pub async fn setup_wine_registry() -> Result<(), NativeError> {
+pub async fn setup_wine_registry(slug: Option<&str>) -> Result<(), NativeError> {
     let mut reg_content = "Windows Registry Editor Version 5.00\n\n".to_string();
     // This supports text values only at the moment
     // if you need a dword - implement it
@@ -421,11 +446,12 @@ pub async fn setup_wine_registry() -> Result<(), NativeError> {
     }
 
     run_wine_command(
-        "regedit",
+        "regedit".into(),
         Some(vec![path.safe_str()?]),
         None,
         false,
         CommandType::Run,
+        slug,
     )
     .await?;
 
@@ -473,8 +499,11 @@ async fn parse_wine_registry(file_path: &str) -> WineRegistry {
     registry_map.clone()
 }
 
-pub async fn parse_mx_wine_registry() -> Result<WineRegistry, NativeError> {
-    let path = wine_prefix_dir()?.join("system.reg");
+pub async fn parse_mx_wine_registry(slug: Option<&str>) -> Result<WineRegistry, NativeError> {
+    let path = wine_prefix_dir(slug)
+        .unwrap()
+        .join("pfx")
+        .join("system.reg");
     if !path.exists() {
         return Ok(HashMap::new());
     }
@@ -497,8 +526,12 @@ fn normalize_key(key: &str) -> String {
     }
 }
 
-pub async fn get_mx_wine_registry_value(query_key: &str) -> Result<Option<String>, RegistryError> {
-    let registry_map = parse_mx_wine_registry().await?;
+#[cfg(false)] // Unused method for now, but may be useful in the future
+pub async fn get_mx_wine_registry_value(
+    query_key: &str,
+    slug: Option<&str>,
+) -> Result<Option<String>, RegistryError> {
+    let registry_map = parse_mx_wine_registry(slug).await?;
     let normalized_query_key = normalize_key(query_key);
 
     let value = if let Some(value) = registry_map.get(&normalized_query_key) {

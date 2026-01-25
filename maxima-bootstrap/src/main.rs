@@ -127,11 +127,12 @@ async fn platform_launch(args: BootstrapLaunchArgs) -> Result<(), NativeError> {
     use maxima::unix::wine::run_wine_command;
 
     run_wine_command(
-        args.path,
+        args.path.into(),
         Some(args.args),
         None,
         false,
         CommandType::WaitForExitAndRun,
+        Some(&args.slug),
     )
     .await?;
 

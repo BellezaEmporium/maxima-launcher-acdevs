@@ -9,6 +9,8 @@ use base64::{DecodeError, Engine, engine::general_purpose};
 use crate::core::{auth::hardware::HardwareInfo, endpoints::API_PROXY_NOVAFUSION_LICENSES};
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
+#[cfg(unix)]
+use crate::util::native::SafeStr;
 use crate::util::native::{NativeError, SafeParent};
 use quick_xml::DeError;
 use regex::Regex;
@@ -164,8 +166,11 @@ pub enum LicenseAuth {
     Direct(String, String),
 }
 
-pub async fn needs_license_update(content_id: &str) -> Result<bool, LicenseError> {
-    let path = get_license_dir()?.join(format!("{}.dlf", content_id));
+pub async fn needs_license_update(
+    content_id: &str,
+    slug: Option<&str>,
+) -> Result<bool, LicenseError> {
+    let path = get_license_dir(slug)?.join(format!("{}.dlf", content_id));
     if !path.exists() {
         return Ok(true);
     }
@@ -192,6 +197,7 @@ pub async fn request_and_save_license(
     auth: &LicenseAuth,
     content_id: &str,
     mut game_path: PathBuf,
+    slug: Option<&str>,
 ) -> Result<(), LicenseError> {
     if game_path.is_file() {
         game_path = game_path.safe_parent()?.to_path_buf();
@@ -205,7 +211,7 @@ pub async fn request_and_save_license(
     let version = detect_ooa_version(game_path).await.unwrap_or(1);
     debug!("OOA version is {version}");
 
-    let hw_info = HardwareInfo::new(version);
+    let hw_info = HardwareInfo::new(version, slug);
     let license = request_license(
         content_id,
         &hw_info.generate_hardware_hash(),
@@ -214,7 +220,7 @@ pub async fn request_and_save_license(
         None,
     )
     .await?;
-    save_licenses(&license, state).await?;
+    save_licenses(&license, state, slug).await?;
 
     Ok(())
 }
@@ -330,8 +336,12 @@ pub async fn save_license(
     Ok(())
 }
 
-pub async fn save_licenses(license: &License, state: OOAState) -> Result<(), LicenseError> {
-    let path = get_license_dir()?;
+pub async fn save_licenses(
+    license: &License,
+    state: OOAState,
+    slug: Option<&str>,
+) -> Result<(), LicenseError> {
+    let path = get_license_dir(slug)?;
 
     debug!("Saving the license {license:#?}");
     save_license(
@@ -352,20 +362,20 @@ pub async fn save_licenses(license: &License, state: OOAState) -> Result<(), Lic
 }
 
 #[cfg(windows)]
-pub fn get_license_dir() -> Result<PathBuf, NativeError> {
-    let path = format!("C:/{}", LICENSE_PATH);
+pub fn get_license_dir(_slug: Option<&str>) -> Result<PathBuf, NativeError> {
+    let path = format!("C:/{}", LICENSE_PATH.to_string());
     create_dir_all(&path)?;
     Ok(PathBuf::from(path))
 }
 
 #[cfg(unix)]
-pub fn get_license_dir() -> Result<PathBuf, NativeError> {
+pub fn get_license_dir(slug: Option<&str>) -> Result<PathBuf, NativeError> {
     use crate::unix::wine::wine_prefix_dir;
 
     let path = format!(
         "{}/drive_c/{}",
-        wine_prefix_dir()?.safe_str()?,
-        LICENSE_PATH
+        wine_prefix_dir(slug).unwrap().safe_str()?,
+        LICENSE_PATH.to_string()
     );
     create_dir_all(&path)?;
 

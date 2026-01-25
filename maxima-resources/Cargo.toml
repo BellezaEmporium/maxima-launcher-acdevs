@@ -4,7 +4,7 @@ version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
 
-[target.'cfg(windows)'.dependencies]
+[dependencies]
 winres = "0.1.12"
 
 [lib]

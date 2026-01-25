@@ -8,10 +8,10 @@ use crate::core::{
 };
 
 pub mod downloader;
+pub mod exclusion;
 pub mod manager;
 pub mod zip;
 pub mod zlib;
-pub mod exclusion;
 
 #[derive(Clone)]
 pub struct ServiceAvailableBuilds {
