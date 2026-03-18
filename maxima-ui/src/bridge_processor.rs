@@ -75,6 +75,10 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                         }
                         app.installer_state.locate_response = Some(res);
                         app.installer_state.locating = false;
+                        app.backend
+                            .backend_commander
+                            .send(bridge_thread::MaximaLibRequest::GetGamesRequest)
+                            .unwrap();
                     }
                     DownloadProgressChanged(offer_id, progress) => {
                         if let Some(dl_ing) = app.installing_now.as_mut() {
@@ -84,7 +88,12 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                             }
                         }
                     }
-                    DownloadFinished(_) => {}
+                    DownloadFinished(_) => {
+                        app.backend
+                            .backend_commander
+                            .send(bridge_thread::MaximaLibRequest::GetGamesRequest)
+                            .unwrap();
+                    }
                     DownloadQueueUpdate(current, queue) => {
                         if let Some(current) = current {
                             if !app.installing_now.as_ref().is_some_and(|n| n.offer == current) {
