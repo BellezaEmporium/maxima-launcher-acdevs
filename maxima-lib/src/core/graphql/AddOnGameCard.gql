@@ -1,0 +1,28 @@
+query AddOnGameCard($locale: Locale!, $slug: String!) {
+  game(locale: $locale, slug: $slug) {
+    id
+    title
+    keyArt {
+      aspect1x1Image {
+        path
+      }
+    }
+    baseGame {
+      id
+      keyArt {
+        aspect1x1Image {
+          path
+        }
+      }
+    }
+    products {
+      items {
+        originOfferId
+        lifecycleStatus {
+          ...lifecycleStatusFragment
+        }
+      }
+    }
+    ...gamePlatformsFragment
+  }
+}
