@@ -26,3 +26,16 @@ query AddOnGameCard($locale: Locale!, $slug: String!) {
     ...gamePlatformsFragment
   }
 }
+
+fragment lifecycleStatusFragment on LifecycleStatus {
+  lifecycleType
+  downloadDate
+  playableStartDate
+  playableEndDate
+  acquisitionStartDate
+  acquisitionEndDate
+  revealDate
+  sunsetDate
+  isEarlyAccess
+  __typename
+}
