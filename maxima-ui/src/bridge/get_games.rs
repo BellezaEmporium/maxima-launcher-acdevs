@@ -209,7 +209,16 @@ pub async fn get_games_request(
         let opt = if downloads.len() == 1 {
             &downloads[0]
         } else {
-            downloads.iter().find(|item| item.download_type() == "LIVE").unwrap()
+            match downloads.iter().find(|item| item.download_type() == "LIVE") {
+                Some(item) => item,
+                None => {
+                    error!(
+                        "Cannot find LIVE download for game with multiple downloads: {}",
+                        &slug
+                    );
+                    continue;
+                }
+            }
         };
 
         let version = if let Ok(version) = game.base_offer().installed_version().await {

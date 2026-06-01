@@ -1,4 +1,3 @@
-#![feature(slice_pattern)]
 use clap::{arg, command, Parser};
 use desktop::check_desktop_icon;
 use egui::{

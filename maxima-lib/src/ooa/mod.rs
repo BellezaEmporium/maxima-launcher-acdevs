@@ -317,7 +317,9 @@ pub async fn save_license(
     data.push_str(quick_xml::se::to_string(license)?.as_str());
 
     if !data.contains("<GameToken>") {
-        data.remove_matches("<GameToken/>");
+        // replace unstable remove_matches (when most of the devs seem to think that it's stable since 2024 ??) w/ regex
+        let re = Regex::new(r#"<GameToken/>"#).unwrap();
+        data = re.replace_all(&data, "").to_string();
     }
 
     let encrypted_data = encrypt_license(&data)?;

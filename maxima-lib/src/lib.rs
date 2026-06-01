@@ -1,9 +1,3 @@
-#![feature(type_ascription)]
-#![feature(slice_pattern)]
-#![feature(string_remove_matches)]
-#![feature(trait_alias)]
-#![feature(type_alias_impl_trait)]
-
 pub mod content;
 pub mod core;
 pub mod lsx;

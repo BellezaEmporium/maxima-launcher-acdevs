@@ -269,7 +269,7 @@ impl Connection {
 
     // State
 
-    pub async fn maxima(&self) -> MutexGuard<Maxima> {
+    pub async fn maxima(&self) -> MutexGuard<'_, Maxima> {
         self.maxima.lock().await
     }
 
@@ -348,7 +348,9 @@ impl Connection {
         debug!("Received LSX Message: {}", message);
 
         let mut message = message.to_string();
-        message.remove_matches("version=\"\" ");
+        // replace unstable remove_matches (when most of the devs seem to think that it's stable since 2024 ??) w/ regex
+        let re = regex::Regex::new(r#"version="" "#).unwrap();
+        message = re.replace_all(&message, "").to_string();
         let lsx_message: LSX = quick_xml::de::from_str(message.as_str())?;
 
         let state = self.state.clone();

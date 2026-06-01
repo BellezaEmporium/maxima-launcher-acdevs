@@ -12,7 +12,6 @@ use std::{
 };
 use tokio::{fs::File, io};
 
-use core::slice::SlicePattern;
 use log::{debug, error, info};
 
 use image::io::Reader as ImageReader;
@@ -137,7 +136,7 @@ impl UIImageCache {
                 // not sure why it *wouldn't* have a parent but i'm just being safe
                 // i don't have a way to catch-all the slugs atm, so this is the better solution, it's infrequent and a non-ui thread anyway
                 if !fs::metadata(&parent).is_ok() {
-                    let res = fs::create_dir_all(&parent)?;
+                    fs::create_dir_all(&parent)?;
                 }
             }
             if let Some(remote) = remotes.get(&needle) {
@@ -146,9 +145,10 @@ impl UIImageCache {
                 let mut file = File::create(&path).await?;
 
                 let body = result.bytes().await?;
-                io::copy(&mut body.as_slice(), &mut file).await?;
+                let mut body_sliced: &[u8] = body.as_ref();
+                io::copy(&mut body_sliced, &mut file).await?;
 
-                let ci = load_image_bytes(&body)?;
+                let ci = load_image_bytes(body.as_ref())?;
                 cache.lock().unwrap().insert(
                     needle,
                     Some(context.load_texture(
