@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use derive_getters::Getters;
 use log::{error, info};
 use std::{env, fmt::Display, path::PathBuf, sync::Arc};
@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     core::{
+        Maxima,
         auth::{
             context::AuthContext,
             nucleus_auth_exchange,
@@ -19,9 +20,8 @@ use crate::{
         cloudsync::{CloudSyncError, CloudSyncLockMode},
         library::{LibraryError, OwnedOffer},
         service_layer::ServiceLayerError,
-        Maxima,
     },
-    ooa::{needs_license_update, request_and_save_license, LicenseAuth, LicenseError},
+    ooa::{LicenseAuth, LicenseError, needs_license_update, request_and_save_license},
     util::{
         native::{NativeError, SafeParent, SafeStr},
         registry::bootstrap_path,
@@ -67,9 +67,7 @@ pub enum LaunchError {
     NotInstalled(String),
     #[error("bootstrap was not found! Please re-install maxima")]
     BootstrapMissing,
-    #[error(
-        "content ID (`{0}`) was specified as an offer ID when launching in OnlineOffline mode"
-    )]
+    #[error("content ID (`{0}`) was specified as an offer ID when launching in OnlineOffline mode")]
     ContentIdAsOfferId(String),
 }
 

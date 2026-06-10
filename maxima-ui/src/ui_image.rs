@@ -6,8 +6,8 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        mpsc::{Receiver, Sender},
         Arc, Mutex,
+        mpsc::{Receiver, Sender},
     },
 };
 use tokio::{fs::File, io};
@@ -15,7 +15,7 @@ use tokio::{fs::File, io};
 use log::{debug, error, info};
 
 use image::io::Reader as ImageReader;
-use maxima::util::native::{maxima_dir, NativeError, SafeStr};
+use maxima::util::native::{NativeError, SafeStr, maxima_dir};
 
 #[derive(Clone, PartialEq, Eq, Hash, std::fmt::Debug)]
 pub enum UIImageType {

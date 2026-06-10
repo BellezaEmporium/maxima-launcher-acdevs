@@ -1,4 +1,4 @@
-use crate::{event_thread, MaximaEguiApp};
+use crate::{MaximaEguiApp, event_thread};
 
 pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
     puffin::profile_function!();

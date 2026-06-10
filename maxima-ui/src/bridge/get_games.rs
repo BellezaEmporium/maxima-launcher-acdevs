@@ -1,18 +1,18 @@
 use crate::{
+    GameDetailsWrapper, GameInfo, GameVersionInfo,
     bridge_thread::{BackendError, InteractThreadGameListResponse, MaximaLibResponse},
     ui_image::UIImageCacheLoaderCommand,
-    GameDetailsWrapper, GameInfo, GameVersionInfo,
 };
 use egui::Context;
 use log::{debug, error, info};
 use maxima::{
     core::{
-        service_layer::{
-            ServiceGame, ServiceGameHub, ServiceGameHubCollection, ServiceGameImagesRequestBuilder,
-            ServiceHeroBackgroundImageRequestBuilder, ServiceLayerClient,
-            SERVICE_REQUEST_GAMEIMAGES, SERVICE_REQUEST_GETHEROBACKGROUNDIMAGE,
-        },
         LockedMaxima,
+        service_layer::{
+            SERVICE_REQUEST_GAMEIMAGES, SERVICE_REQUEST_GETHEROBACKGROUNDIMAGE, ServiceGame,
+            ServiceGameHub, ServiceGameHubCollection, ServiceGameImagesRequestBuilder,
+            ServiceHeroBackgroundImageRequestBuilder, ServiceLayerClient,
+        },
     },
     util::native::maxima_dir,
 };

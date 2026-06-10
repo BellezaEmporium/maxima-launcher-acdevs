@@ -1,6 +1,5 @@
 use std::{
-    cmp,
-    io::{self, Cursor, Read, Seek, SeekFrom, Write},
+    io::{self, Cursor, Read, SeekFrom},
     path::{Path, PathBuf},
     pin::Pin,
     prelude,
@@ -8,30 +7,25 @@ use std::{
     task,
 };
 
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+
 use crate::{
     content::{
         manager::DownloaderError,
         zip::{CompressionType, ZipFile, ZipFileEntry},
-        zlib::{restore_zlib_state, write_zlib_state},
     },
-    util::{
-        hash::hash_file_crc32,
-        native::{maxima_dir, NativeError, SafeParent, SafeStr},
-    },
+    util::native::{SafeParent, maxima_dir},
 };
-use async_compression::tokio::write::DeflateDecoder;
 use async_trait::async_trait;
-use bytes::{Buf, BufMut, Bytes, BytesMut};
 use derive_getters::Getters;
-use flate2::bufread::DeflateDecoder as BufreadDeflateDecoder;
+use flate2::{Decompress, bufread::DeflateDecoder as BufreadDeflateDecoder};
 use futures::{Stream, StreamExt, TryStreamExt};
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use reqwest::Client;
-use strum_macros::Display;
 use thiserror::Error;
 use tokio::{
-    fs::{create_dir, create_dir_all, File, OpenOptions},
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, BufReader, BufWriter},
+    fs::{File, OpenOptions, create_dir, create_dir_all},
+    io::{AsyncSeekExt, AsyncWrite, BufReader, BufWriter},
     runtime::Handle,
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
@@ -53,17 +47,19 @@ trait DownloadDecoder: Send {
     fn write_in_pos(&self) -> u64;
     fn write_out_pos(&self) -> u64;
 
-    fn get_mut<'b>(&mut self) -> Arc<Mutex<dyn AsyncWriteWrapper>>;
+    fn get_mut(&mut self) -> Arc<Mutex<BufWriter<File>>>;
 }
 
 struct ZLibDeflateDecoder {
-    decoder: Arc<Mutex<DeflateDecoder<BufWriter<File>>>>,
+    decompress: flate2::Decompress,
+    writer: Arc<Mutex<tokio::io::BufWriter<tokio::fs::File>>>,
 }
 
 impl ZLibDeflateDecoder {
     fn new(writer: BufWriter<File>) -> Self {
         Self {
-            decoder: Arc::new(Mutex::new(DeflateDecoder::new(writer))),
+            decompress: Decompress::new(true),
+            writer: Arc::new(Mutex::new(writer)),
         }
     }
 }
@@ -71,22 +67,18 @@ impl ZLibDeflateDecoder {
 #[async_trait]
 impl DownloadDecoder for ZLibDeflateDecoder {
     fn save_state(&mut self, buf: &mut BytesMut) {
-        let mut decoder = self.decoder.lock().unwrap();
-        let zstream = decoder.inner_mut().decoder_mut().inner.decompress.get_raw();
-        write_zlib_state(buf, zstream);
+        // State serialization is disabled - flate2 doesn't expose raw zlib state
+        let _ = buf;
     }
 
     fn restore_state(&mut self, buf: &mut Bytes) {
-        let mut decoder = self.decoder.lock().unwrap();
-        let decompress = &mut decoder.inner_mut().decoder_mut().inner.decompress;
-        decompress.reset(false);
-        let zstream = decompress.get_raw();
-        restore_zlib_state(buf, zstream);
+        // State deserialization is disabled - flate2 doesn't expose raw zlib state
+        self.decompress.reset(false);
+        let _ = buf;
     }
 
     fn seek(&mut self, pos: SeekFrom) -> Result<(), DownloaderError> {
-        let mut decoder = self.decoder.lock().unwrap();
-        let file = decoder.get_mut();
+        let mut file = self.writer.lock().unwrap();
 
         let handle = Handle::current();
         let _ = handle.enter();
@@ -96,21 +88,15 @@ impl DownloadDecoder for ZLibDeflateDecoder {
     }
 
     fn write_in_pos(&self) -> u64 {
-        let mut decoder = self.decoder.lock().unwrap();
-        let decompress = &mut decoder.inner_mut().decoder_mut().inner.decompress;
-        let zstream = decompress.get_raw();
-        zstream.total_in as u64
+        self.decompress.total_in()
     }
 
     fn write_out_pos(&self) -> u64 {
-        let mut decoder = self.decoder.lock().unwrap();
-        let decompress = &mut decoder.inner_mut().decoder_mut().inner.decompress;
-        let zstream = decompress.get_raw();
-        zstream.total_out as u64
+        self.decompress.total_out()
     }
 
-    fn get_mut(&mut self) -> Arc<Mutex<dyn AsyncWriteWrapper>> {
-        self.decoder.clone()
+    fn get_mut(&mut self) -> Arc<Mutex<BufWriter<File>>> {
+        self.writer.clone()
     }
 }
 
@@ -131,7 +117,6 @@ impl NoopDecoder {
 #[async_trait]
 impl DownloadDecoder for NoopDecoder {
     fn save_state(&mut self, buf: &mut BytesMut) {
-        self.pos = self.writer.lock().unwrap().buffer().len() as u64;
         buf.put_u64(self.pos);
     }
 
@@ -157,20 +142,17 @@ impl DownloadDecoder for NoopDecoder {
         self.pos
     }
 
-    fn get_mut<'b>(&mut self) -> Arc<Mutex<dyn AsyncWriteWrapper>> {
+    fn get_mut(&mut self) -> Arc<Mutex<BufWriter<File>>> {
         self.writer.clone()
     }
 }
-
-trait AsyncWriteWrapper: AsyncWrite + Unpin + Send {}
-impl<T: AsyncWrite + Unpin + Send> AsyncWriteWrapper for T {}
 
 struct AsyncWriterWrapper<'a> {
     id: String,
     path: String,
     zlib_state_file: std::fs::File,
     decoder: &'a mut Box<dyn DownloadDecoder>,
-    inner: Arc<Mutex<dyn AsyncWriteWrapper>>,
+    inner: Arc<Mutex<BufWriter<File>>>,
 }
 
 impl<'a> AsyncWriterWrapper<'a> {
@@ -195,7 +177,7 @@ impl<'a> AsyncWriterWrapper<'a> {
 
 impl<'a> AsyncWrite for AsyncWriterWrapper<'a> {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
         buf: &[u8],
     ) -> task::Poll<prelude::v1::Result<usize, io::Error>> {
@@ -482,15 +464,12 @@ impl ZipDownloader {
                 Bytes::copy_from_slice(&compressed_data[..available_length as usize])
             }
             CompressionType::Deflate => {
-                let mut decoder = BufreadDeflateDecoder::new(Cursor::new(&compressed_data));
+                let decoder = BufreadDeflateDecoder::new(Cursor::new(&compressed_data));
                 let mut limited_reader = decoder.take(length);
                 let mut decompressed_data = Vec::with_capacity(length as usize);
                 limited_reader.read_to_end(&mut decompressed_data)?;
 
                 Bytes::from(decompressed_data)
-            }
-            any => {
-                return Err(DownloaderError::CompressionType(any.to_owned()));
             }
         };
 

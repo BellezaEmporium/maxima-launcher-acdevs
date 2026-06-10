@@ -4,10 +4,10 @@ use std::sync::mpsc::{Receiver, Sender};
 use crate::bridge_thread::BackendError;
 use log::info;
 use maxima::core::{
-    service_layer::{
-        ServiceFriends, ServiceGetMyFriendsRequestBuilder, SERVICE_REQUEST_GETMYFRIENDS,
-    },
     LockedMaxima,
+    service_layer::{
+        SERVICE_REQUEST_GETMYFRIENDS, ServiceFriends, ServiceGetMyFriendsRequestBuilder,
+    },
 };
 
 // TODO(headassbtw): integrate this into the enum too (out of scope for the PR i wrote this in)

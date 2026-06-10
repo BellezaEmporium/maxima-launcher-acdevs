@@ -1,7 +1,7 @@
 use crate::{
+    BackendStallState, GameDetails, GameDetailsWrapper, MaximaEguiApp,
     bridge_thread::{self, BackendError},
     views::downloads_view::QueuedDownload,
-    BackendStallState, GameDetails, GameDetailsWrapper, MaximaEguiApp,
 };
 use log::{error, info, warn};
 use std::sync::mpsc::TryRecvError;

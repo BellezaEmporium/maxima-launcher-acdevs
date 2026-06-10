@@ -22,7 +22,7 @@ macro_rules! predip_type {
             ),* $(,)?
         }
     ) => {
-        paste::paste! {
+        pastey::paste! {
             // Main struct definition
             $(#[$message_attr])*
             #[derive(Default, Debug, Clone, Deserialize, PartialEq, Getters)]
@@ -111,7 +111,7 @@ impl PreDiPManifest {
             core::launch::mx_linux_setup,
             unix::{
                 fs::case_insensitive_path,
-                wine::{invalidate_mx_wine_registry, run_wine_command, CommandType},
+                wine::{CommandType, invalidate_mx_wine_registry, run_wine_command},
             },
         };
 

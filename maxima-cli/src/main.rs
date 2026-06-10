@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use inquire::{Select, Text};
 use lazy_static::lazy_static;
 use log::{debug, error, info, warn};
@@ -19,15 +19,17 @@ use maxima::{
 
 use maxima::{
     content::{
+        ContentService,
         downloader::ZipDownloader,
         manager::{QueuedGame, QueuedGameBuilder},
-        ContentService,
     },
     core::{
+        LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder,
         auth::{
+            TokenResponse,
             context::AuthContext,
             login::{begin_oauth_login_flow, manual_login},
-            nucleus_auth_exchange, nucleus_token_exchange, TokenResponse,
+            nucleus_auth_exchange, nucleus_token_exchange,
         },
         clients::JUNO_PC_CLIENT_ID,
         cloudsync::CloudSyncLockMode,
@@ -35,11 +37,10 @@ use maxima::{
         library::OwnedTitle,
         manifest::{self, MANIFEST_RELATIVE_PATH},
         service_layer::{
+            SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
             ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder,
-            ServiceLegacyOffer, ServicePlayer, SERVICE_REQUEST_GETBASICPLAYER,
-            SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
+            ServiceLegacyOffer, ServicePlayer,
         },
-        LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder,
     },
     ooa,
     rtm::client::BasicPresence,

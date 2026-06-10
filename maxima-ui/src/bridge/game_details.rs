@@ -2,16 +2,16 @@ use egui::Context;
 use std::sync::mpsc::Sender;
 
 use crate::{
+    GameDetails,
     bridge_thread::{BackendError, InteractThreadGameDetailsResponse, MaximaLibResponse},
     util::markdown::html_to_easymark,
-    GameDetails,
 };
 use maxima::core::{
-    service_layer::{
-        ServiceGameSystemRequirements, ServiceGameSystemRequirementsRequestBuilder,
-        SERVICE_REQUEST_GAMESYSTEMREQUIREMENTS,
-    },
     LockedMaxima,
+    service_layer::{
+        SERVICE_REQUEST_GAMESYSTEMREQUIREMENTS, ServiceGameSystemRequirements,
+        ServiceGameSystemRequirementsRequestBuilder,
+    },
 };
 
 pub async fn game_details_request(

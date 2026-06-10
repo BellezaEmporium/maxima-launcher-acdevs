@@ -5,7 +5,7 @@ use crate::core::{
     clients::JUNO_PC_CLIENT_ID,
     endpoints::API_NUCLEUS_AUTH,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::random;
 use ring::hmac::HMAC_SHA256;
 use sha2_const::Sha256;

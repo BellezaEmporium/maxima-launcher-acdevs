@@ -2,7 +2,7 @@
 // :)
 
 use eframe::egui_glow;
-use eframe::glow::{NativeUniformLocation, BLEND, TEXTURE_2D};
+use eframe::glow::{BLEND, NativeUniformLocation, TEXTURE_2D};
 use egui::mutex::Mutex;
 use egui::{TextureId, Vec2};
 use egui_glow::glow;

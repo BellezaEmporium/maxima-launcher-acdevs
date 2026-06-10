@@ -2,7 +2,7 @@
 name = "maxima-service"
 version = "0.1.0"
 authors = ["Sean Kahler <sean@battleda.sh>"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 maxima-lib = { path = "../maxima-lib" }

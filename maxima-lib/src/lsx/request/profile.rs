@@ -1,8 +1,8 @@
 use log::{debug, info};
 
 use crate::core::service_layer::{
-    ServiceFriends, ServiceGetMyFriendsRequestBuilder, ServiceLayerError,
-    SERVICE_REQUEST_GETMYFRIENDS,
+    SERVICE_REQUEST_GETMYFRIENDS, ServiceFriends, ServiceGetMyFriendsRequestBuilder,
+    ServiceLayerError,
 };
 use crate::{
     lsx::{
@@ -18,7 +18,7 @@ use crate::{
     },
     make_lsx_handler_response,
     rtm::client::{BasicPresence, RichPresenceBuilder},
-    util::native::{platform_path, NativeError, SafeStr},
+    util::native::{NativeError, SafeStr, platform_path},
 };
 
 pub async fn handle_profile_request(

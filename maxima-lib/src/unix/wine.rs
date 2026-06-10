@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     ffi::OsStr,
-    fs::{create_dir_all, remove_dir_all, remove_file, File},
+    fs::{File, create_dir_all, remove_dir_all, remove_file},
     io::Read,
     path::PathBuf,
     process::{ExitStatus, Stdio},
@@ -23,8 +23,8 @@ use tokio::{
 use xz2::read::XzDecoder;
 
 use crate::util::{
-    github::{fetch_github_release, fetch_github_releases, github_download_asset, GithubRelease},
-    native::{maxima_dir, DownloadError, NativeError, SafeParent, SafeStr, WineError},
+    github::{GithubRelease, fetch_github_release, fetch_github_releases, github_download_asset},
+    native::{DownloadError, NativeError, SafeParent, SafeStr, WineError, maxima_dir},
     registry::RegistryError,
 };
 
@@ -148,7 +148,7 @@ pub(crate) async fn check_runtime_validity(
         _ => {
             return Err(NativeError::Wine(WineError::UnimplementedRuntime(
                 key.to_string(),
-            )))
+            )));
         }
     };
     let path = wine_dir()?.join(key);
@@ -179,7 +179,7 @@ pub(crate) async fn install_runtime(
         _ => {
             return Err(NativeError::Wine(WineError::UnimplementedRuntime(
                 key.to_string(),
-            )))
+            )));
         }
     };
 

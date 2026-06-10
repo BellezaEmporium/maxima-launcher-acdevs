@@ -1,6 +1,6 @@
 use crate::{
     core::service_layer::{
-        ServiceAddonSearchRequestBuilder, ServiceAddonSearchResultRoot, SERVICE_REQUEST_ADDONSEARCH,
+        SERVICE_REQUEST_ADDONSEARCH, ServiceAddonSearchRequestBuilder, ServiceAddonSearchResultRoot,
     },
     lsx::{
         connection::LockedConnectionState,

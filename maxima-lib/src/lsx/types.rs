@@ -22,7 +22,7 @@ macro_rules! lsx_message {
             ),* $(,)?
         }
     ) => {
-        paste::paste! {
+        pastey::paste! {
             // Main struct definition
             $(#[$message_attr])*
             #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -147,7 +147,7 @@ pub fn create_lsx_message(r#type: LSXMessageType) -> LSX {
 #[macro_export]
 macro_rules! make_lsx_handler_response {
     ($reply_type:ty, $reply_name:ident, $reply_initializer:tt) => {
-        paste::paste! {
+        pastey::paste! {
             Ok(Some([<LSX $reply_type Type>]::$reply_name(
                 [<LSX $reply_name>] $reply_initializer
             )))

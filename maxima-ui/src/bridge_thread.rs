@@ -2,6 +2,7 @@ use egui::Context;
 use log::{error, info, warn};
 
 use crate::{
+    GameDetails, GameInfo, GameSettings,
     bridge::{
         game_details::game_details_request, get_friends::get_friends_request,
         get_games::get_games_request, login_oauth::login_oauth, start_game::start_game_request,
@@ -9,28 +10,27 @@ use crate::{
     event_thread::{EventThread, MaximaEventRequest, MaximaEventResponse},
     ui_image::UIImageCacheLoaderCommand,
     views::friends_view::UIFriend,
-    GameDetails, GameInfo, GameSettings,
 };
 use maxima::{
     content::manager::{
         ContentManager, ContentManagerError, QueuedGameBuilder, QueuedGameBuilderError,
     },
     core::{
+        LockedMaxima, Maxima, MaximaCreationError, MaximaOptionsBuilder, MaximaOptionsBuilderError,
         auth::storage::{AuthError, TokenError},
         launch::LaunchError,
         library::LibraryError,
-        manifest::{self, ManifestError, MANIFEST_RELATIVE_PATH},
+        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
         service_layer::{
             ServiceGameImagesRequestBuilderError, ServiceHeroBackgroundImageRequestBuilderError,
             ServiceLayerError, ServicePlayer,
         },
-        LockedMaxima, Maxima, MaximaCreationError, MaximaOptionsBuilder, MaximaOptionsBuilderError,
     },
     lsx::service::LSXServerError,
     rtm::RtmError,
     util::{
         native::NativeError,
-        registry::{check_registry_validity, set_up_registry, RegistryError},
+        registry::{RegistryError, check_registry_validity, set_up_registry},
     },
 };
 use std::sync::mpsc::{SendError, TryRecvError};
@@ -192,6 +192,7 @@ impl BridgeThread {
         let (rtm_responder, rtm_listener) = std::sync::mpsc::channel();
         let context = ctx.clone();
 
+        // you dare spawn a thread without catching my sneaky sneaky panics mister Potter ??
         tokio::task::spawn(async move {
             let die_fallback_transmitter = backend_responder.clone();
             //panic::set_hook(Box::new( |_| {}));

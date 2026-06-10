@@ -1,5 +1,5 @@
-use std::env;
 use log::{debug, info};
+use std::env;
 
 use crate::{
     core::{auth::hardware::HardwareInfo, launch::LaunchMode},
@@ -9,7 +9,7 @@ use crate::{
         types::{LSXRequestLicense, LSXRequestLicenseResponse, LSXResponseType},
     },
     make_lsx_handler_response,
-    ooa::{request_license, LicenseAuth},
+    ooa::{LicenseAuth, request_license},
 };
 
 pub async fn handle_license_request(

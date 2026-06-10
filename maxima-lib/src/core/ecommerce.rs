@@ -80,7 +80,7 @@ macro_rules! ecommerce_type {
             ),* $(,)?
         }
     ) => {
-        paste::paste! {
+        pastey::paste! {
             // Main struct definition
             $(#[$message_attr])*
             #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -102,7 +102,7 @@ macro_rules! ecommerce_type {
 
 macro_rules! ecommerce_enum {
     ($name:ident, { $($field:tt)* }) => {
-        paste::paste! {
+        pastey::paste! {
             #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
             #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
             pub enum [<Commerce $name>] {

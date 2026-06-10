@@ -13,7 +13,6 @@
 ///   - Call `/lock/authorize` with a `Vec<CloudSyncRequest>`, creating details that match the file and keeping track of them for later
 ///   - Push the files to the endpoints, along with a manifest outlining the files you uploaded and/or that are already there.
 /// - Call `/lock/delete`
-
 use super::{
     auth::storage::LockedAuthStorage, endpoints::API_CLOUDSYNC, launch::LaunchMode,
     library::OwnedOffer,
@@ -173,7 +172,7 @@ async fn calc_file_md5(file: File, mode: HashMode) -> Result<String, CloudSyncEr
         buf.consume(len);
     }
 
-    let digest = context.compute();
+    let digest = context.finalize();
 
     match mode {
         HashMode::Hex => Ok(format!("{:x}", digest)),
@@ -211,7 +210,7 @@ impl<'a> CloudSyncLock<'a> {
         let res = client.get(manifest_url).send().await?;
 
         let manifest: CloudSyncManifest = {
-            let mut manifest = if let Ok(text) = res.text().await {
+            let manifest = if let Ok(text) = res.text().await {
                 let result = quick_xml::de::from_str(&text);
                 if let Ok(manifest) = result {
                     manifest
@@ -278,7 +277,7 @@ impl<'a> CloudSyncLock<'a> {
 
             let file = OpenOptions::new().read(true).open(path.clone()).await;
 
-            let md5 = if let Ok(file) = file {
+            let _md5 = if let Ok(file) = file {
                 let md5 = calc_file_md5(file, HashMode::Hex).await?;
                 if let Some(_) = self.manifest.file_by_md5(&md5) {
                     debug!("Skipping CloudSync read {}", &path.display());
@@ -305,7 +304,9 @@ impl<'a> CloudSyncLock<'a> {
         }
 
         let (token, user_id) = acquire_auth(self.auth).await?;
-        let body = quick_xml::se::to_string(&value)?.replace("CloudSyncRequests", "requests");
+        let body = quick_xml::se::to_string(&value)
+            .unwrap()
+            .replace("CloudSyncRequests", "requests");
 
         let res = self
             .client
@@ -322,7 +323,7 @@ impl<'a> CloudSyncLock<'a> {
 
         for i in 0..authorizations.request.len() {
             let auth_req = &authorizations.request[i];
-            let mut req = self.client.get(&auth_req.url);
+            let req = self.client.get(&auth_req.url);
             let res = req.send().await?;
             if !res.status().is_success() {
                 // If the request is invalid, S3 will return an error *and* include that error in the body.
@@ -462,8 +463,9 @@ impl<'a> CloudSyncLock<'a> {
                 }
             }
 
-            let manifest =
-                quick_xml::se::to_string(&manifest)?.replace("CloudSyncManifest", "manifest");
+            let manifest = quick_xml::se::to_string(&manifest)
+                .unwrap()
+                .replace("CloudSyncManifest", "manifest");
             data.insert(
                 0,
                 WriteData::Text {
@@ -474,7 +476,9 @@ impl<'a> CloudSyncLock<'a> {
         }
 
         let (token, user_id) = acquire_auth(self.auth).await?;
-        let body = quick_xml::se::to_string(&auth_reqs)?.replace("CloudSyncRequests", "requests");
+        let body = quick_xml::se::to_string(&auth_reqs)
+            .unwrap()
+            .replace("CloudSyncRequests", "requests");
 
         let res = self
             .client
@@ -506,7 +510,7 @@ impl<'a> CloudSyncLock<'a> {
 
                     len as u64
                 }
-                WriteData::Text {text, .. } => {
+                WriteData::Text { text, .. } => {
                     req = req.body(text.to_owned());
                     text.len() as u64
                 }
@@ -689,7 +693,7 @@ macro_rules! cloudsync_type {
             ),* $(,)?
         }
     ) => {
-        paste::paste! {
+        pastey::paste! {
             // Main struct definition
             $(#[$message_attr])*
             #[derive(Default, Debug, Clone, Serialize, Deserialize, Getters, PartialEq)]

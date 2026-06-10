@@ -20,7 +20,9 @@ pub enum ManifestError {
 
     #[error("failed to decode DiPManifest. Weird encoding?")]
     Decode,
-    #[error("Unsupported Manifest.\nDiP Attempt: `{dip_attempt:?}`\nPreDiP Attempt: `{pre_dip_attempt:?}`")]
+    #[error(
+        "Unsupported Manifest.\nDiP Attempt: `{dip_attempt:?}`\nPreDiP Attempt: `{pre_dip_attempt:?}`"
+    )]
     Unsupported {
         dip_attempt: Box<ManifestError>,
         pre_dip_attempt: Box<ManifestError>,

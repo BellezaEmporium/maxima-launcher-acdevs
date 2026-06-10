@@ -1,5 +1,5 @@
 use log::{error, info};
-use maxima::util::native::{maxima_dir, NativeError, SafeParent};
+use maxima::util::native::{NativeError, SafeParent, maxima_dir};
 use std::collections::HashMap;
 use std::process::{Command, Output};
 use thiserror::Error;

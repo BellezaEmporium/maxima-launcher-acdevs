@@ -4,10 +4,10 @@ use crate::core::{
     auth::storage::LockedAuthStorage,
     cache::DynamicCache,
     service_layer::{
-        ServiceAvailableBuild, ServiceAvailableBuilds, ServiceAvailableBuildsBuilder,
+        SERVICE_REQUEST_AVAILABLEBUILDS, SERVICE_REQUEST_DOWNLOADURL, ServiceAvailableBuild,
+        ServiceAvailableBuilds, ServiceAvailableBuildsBuilder,
         ServiceAvailableBuildsRequestBuilder, ServiceDownloadUrlMetadata,
         ServiceDownloadUrlRequestBuilder, ServiceLayerClient, ServiceLayerError,
-        SERVICE_REQUEST_AVAILABLEBUILDS, SERVICE_REQUEST_DOWNLOADURL,
     },
 };
 

@@ -1,10 +1,10 @@
 use crate::{
+    FrontendLanguage,
     translation_manager::TranslationManager,
     views::{
         friends_view::{FriendsViewBarPage, FriendsViewBarStatusFilter},
         game_view::{GameViewBarGenre, GameViewBarPlatform},
     },
-    FrontendLanguage,
 };
 
 pub trait EnumToString<T> {

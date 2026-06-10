@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use sysinfo::{Pid, PidExt, ProcessExt, System, SystemExt};
+use sysinfo::{Pid, System};
 use thiserror::Error;
 use tokio::sync::{MutexGuard, RwLock};
 
@@ -37,13 +37,13 @@ use super::{
         voip::handle_voip_status_request,
     },
     types::{
-        create_lsx_message, LSXChallenge, LSXEvent, LSXEventType, LSXMessageType, LSXRequest,
-        LSXResponse, LSX,
+        LSX, LSXChallenge, LSXEvent, LSXEventType, LSXMessageType, LSXRequest, LSXResponse,
+        create_lsx_message,
     },
 };
 use crate::{
     core::{
-        auth::storage::TokenError, launch::ActiveGameContext, LockedMaxima, Maxima, MaximaEvent,
+        LockedMaxima, Maxima, MaximaEvent, auth::storage::TokenError, launch::ActiveGameContext,
     },
     lsx::{request::LSXRequestError, types::LSXRequestType},
     util::{
@@ -55,7 +55,9 @@ use crate::{
 #[derive(Error, Debug)]
 pub enum LSXConnectionError {
     #[error(transparent)]
-    Xml(#[from] DeError),
+    XmlDeserialize(#[from] DeError),
+    #[error(transparent)]
+    XmlSerialize(#[from] quick_xml::se::SeError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -86,7 +88,7 @@ macro_rules! lsx_message_matcher {
         $connection_var:expr, $message_var:expr, $message_type:ty;
         $($name:ident $handler:ident),* $(,)?
     ) => {
-        paste::paste! {
+        pastey::paste! {
             match $message_var {
                 $(
                     $message_type::$name(msg) => $handler($connection_var, msg).await,
@@ -151,13 +153,12 @@ pub fn get_os_pid(context: &ActiveGameContext) -> Result<u32, NativeError> {
     let mut pid = None;
 
     let sys = System::new_all();
-    for e in sys.processes() {
-        let (p_pid, process) = e;
+    for (p_pid, process) in sys.processes() {
         if process.cmd().is_empty() {
             continue;
         }
 
-        let mut cmd = process.cmd()[0].to_owned();
+        let mut cmd = process.cmd()[0].to_string_lossy().into_owned();
 
         // Wine path handling
         if cfg!(unix) && cmd.starts_with("Z:") {
@@ -169,7 +170,8 @@ pub fn get_os_pid(context: &ActiveGameContext) -> Result<u32, NativeError> {
         }
 
         for ele in process.environ() {
-            let (key, value) = ele.split_once('=').unwrap_or((ele, ""));
+            let env = ele.to_string_lossy();
+            let (key, value) = env.split_once('=').unwrap_or((&env, ""));
             if key != "MXLaunchId" || value != context.launch_id() {
                 continue;
             }
@@ -226,7 +228,7 @@ impl Connection {
                 if let Some(process) = sys.process(Pid::from_u32(os_pid)) {
                     let filename = PathBuf::from(
                         process.cmd()[0]
-                            .to_owned()
+                            .to_string_lossy()
                             .replace("Z:", "")
                             .replace('\\', "/"),
                     )

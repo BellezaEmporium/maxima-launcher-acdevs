@@ -1,28 +1,21 @@
-use aes::cipher::block_padding::UnpadError;
-use aes::cipher::{
-    block_padding::Pkcs7, generic_array::GenericArray, BlockDecryptMut, BlockEncryptMut, KeyIvInit,
-};
+use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
 use chrono::{DateTime, Duration, Utc};
 use log::{debug, warn};
 use std::string::FromUtf8Error;
-use std::{
-    fs::create_dir_all,
-    io::{Read, Write},
-    path::PathBuf,
-};
-use tokio::fs::{self, File};
+use std::{fs::create_dir_all, path::PathBuf};
+use tokio::fs;
 
-use base64::{engine::general_purpose, DecodeError, Engine};
+use base64::{DecodeError, Engine, engine::general_purpose};
 
 use crate::core::{auth::hardware::HardwareInfo, endpoints::API_PROXY_NOVAFUSION_LICENSES};
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
-use crate::util::native::{NativeError, SafeParent, SafeStr};
+use crate::util::native::{NativeError, SafeParent};
 use lazy_static::lazy_static;
 use quick_xml::DeError;
 use regex::Regex;
 use reqwest::header::ToStrError;
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -78,8 +71,6 @@ pub enum LicenseError {
     #[error(transparent)]
     ToStr(#[from] ToStrError),
     #[error(transparent)]
-    Unpad(#[from] UnpadError),
-    #[error(transparent)]
     Utf8(#[from] FromUtf8Error),
     #[error(transparent)]
     DeError(#[from] DeError),
@@ -96,6 +87,9 @@ pub enum LicenseError {
 
     #[error("license request failed: `{0}`")]
     Http(String),
+
+    #[error("xml parsing failed: `{0}`")]
+    SeError(#[from] quick_xml::se::SeError),
 }
 
 pub fn detect_ooa_state(game_path: PathBuf) -> OOAState {
@@ -266,9 +260,11 @@ pub async fn request_license(
         query.push(("requestType", request_type));
     }
 
+    let mut url = Url::parse(API_PROXY_NOVAFUSION_LICENSES).unwrap();
+    url.query_pairs_mut().extend_pairs(query.iter().copied());
+
     let res = Client::new()
-        .get(API_PROXY_NOVAFUSION_LICENSES)
-        .query(&query)
+        .get(url)
         .header("X-Requester-Id", "Origin Online Activation")
         .header("User-Agent", "EACTransaction")
         .send()
@@ -290,22 +286,19 @@ pub async fn request_license(
 }
 
 pub fn decrypt_license(data: &[u8]) -> Result<License, LicenseError> {
-    let key = GenericArray::from_slice(&OOA_CRYPTO_KEY);
-    let iv = GenericArray::from_slice(&[0u8; 16]);
-    let cipher = Aes128CbcDec::new(key, iv);
+    let iv = [0u8; 16];
+    let cipher = Aes128CbcDec::new((&OOA_CRYPTO_KEY).into(), (&iv).into());
 
-    let decrypted_data = cipher.decrypt_padded_vec_mut::<Pkcs7>(data)?;
+    let decrypted_data = cipher.decrypt_padded_vec::<Pkcs7>(data).unwrap();
     let data_str = String::from_utf8(decrypted_data)?;
 
     Ok(quick_xml::de::from_str(&data_str)?)
 }
 
 pub fn encrypt_license(data: &str) -> Result<Vec<u8>, LicenseError> {
-    let key = GenericArray::from_slice(&OOA_CRYPTO_KEY);
-    let iv = GenericArray::from_slice(&[0u8; 16]);
-
-    let cipher = Aes128CbcEnc::new(key, iv);
-    Ok(cipher.encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes()))
+    let iv = [0u8; 16];
+    let cipher = Aes128CbcEnc::new((&OOA_CRYPTO_KEY).into(), (&iv).into());
+    Ok(cipher.encrypt_padded_vec::<Pkcs7>(data.as_bytes()))
 }
 
 pub async fn save_license(

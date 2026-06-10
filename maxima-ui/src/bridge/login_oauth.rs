@@ -2,9 +2,9 @@ use crate::bridge_thread::{BackendError, InteractThreadLoginResponse, MaximaLibR
 use egui::Context;
 use maxima::{
     core::{
+        LockedMaxima,
         auth::{context::AuthContext, login, nucleus_token_exchange},
         service_layer::ServiceLayerError,
-        LockedMaxima,
     },
     util::native::take_foreground_focus,
 };

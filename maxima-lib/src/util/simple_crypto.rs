@@ -1,9 +1,8 @@
 use std::{io::Write, num::Wrapping, str};
 
-use aes::cipher::{
-    block_padding::Pkcs7, generic_array::GenericArray, BlockDecryptMut, BlockEncryptMut, KeyInit,
-};
+use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyInit, block_padding::Pkcs7};
 use chrono::Datelike;
+use hex;
 
 const CRYPTO_KEY: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
@@ -17,17 +16,15 @@ const PRIME_30K: u32 = 350377;
 pub fn simple_decrypt(data: &[u8], key: &[u8; 16]) -> String {
     let data = get_array(str::from_utf8(data).unwrap());
 
-    let key = GenericArray::from_slice(key);
-    let result = Aes128EcbDec::new(key)
-        .decrypt_padded_vec_mut::<Pkcs7>(&data)
+    let res = Aes128EcbDec::new(&(*key).into())
+        .decrypt_padded_vec::<Pkcs7>(&data)
         .unwrap();
 
-    String::from_utf8(result).unwrap()
+    String::from_utf8(res).unwrap()
 }
 
 pub fn simple_encrypt(data: &[u8], key: &[u8; 16]) -> String {
-    let key = GenericArray::from_slice(key);
-    let res = Aes128EcbEnc::new(key).encrypt_padded_vec_mut::<Pkcs7>(data);
+    let res = Aes128EcbEnc::new(&(*key).into()).encrypt_padded_vec::<Pkcs7>(&data);
     hex::encode(res)
 }
 

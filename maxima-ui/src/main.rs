@@ -1,24 +1,24 @@
-use clap::{arg, command, Parser};
+use clap::Parser;
 use desktop::check_desktop_icon;
 use egui::{
-    pos2,
-    style::{ScrollStyle, Spacing},
-    style::{WidgetVisuals, Widgets},
-    vec2, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Layout, Margin, Rect,
-    Response, Rounding, Stroke, Style, TextureId, Ui, Vec2, ViewportBuilder, Visuals, Widget,
+    Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Layout, Margin,
+    Rect, Response, Stroke, Style, TextureId, Ui, UiBuilder, Vec2, ViewportBuilder, Visuals,
+    Widget, pos2,
+    style::{ScrollStyle, Spacing, WidgetVisuals, Widgets},
+    vec2,
 };
 use log::error;
 use maxima::{core::library::OwnedOffer, util::log::init_logger};
-use std::{collections::HashMap, default::Default, ops::RangeInclusive, path::PathBuf};
+use std::{collections::HashMap, ops::RangeInclusive, path::PathBuf, sync::Arc};
 use strum_macros::EnumIter;
 use ui_image::{UIImageCache, UIImageType};
 use views::{
     debug_view::debug_view,
-    downloads_view::{downloads_view, QueuedDownload},
+    downloads_view::{QueuedDownload, downloads_view},
     friends_view::{
-        friends_view, FriendsViewBar, FriendsViewBarPage, FriendsViewBarStatusFilter, UIFriend,
+        FriendsViewBar, FriendsViewBarPage, FriendsViewBarStatusFilter, UIFriend, friends_view,
     },
-    game_view::{games_view, GameViewBar, GameViewBarGenre, GameViewBarPlatform},
+    game_view::{GameViewBar, GameViewBarGenre, GameViewBarPlatform, games_view},
     settings_view::settings_view,
     undefined_view::{coming_soon_view, undefined_view},
 };
@@ -31,7 +31,7 @@ use app_bg_renderer::AppBgRenderer;
 use bridge_thread::{BackendError, BridgeThread, InteractThreadLocateGameResponse};
 use game_view_bg_renderer::GameViewBgRenderer;
 use renderers::{app_bg_renderer, game_view_bg_renderer};
-use translation_manager::{positional_replace, TranslationManager};
+use translation_manager::{TranslationManager, positional_replace};
 
 pub mod bridge;
 pub mod util;
@@ -65,12 +65,17 @@ struct Args {
     allow_bf3: bool,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // Create the tokio runtime manually so eframe::run_native doesn't block
+    // an async worker thread (which can stall spawned async tasks).
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    let _rt_guard = rt.enter();
+
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     init_logger();
     let mut args = Args::parse();
 
-    if !std::env::var("MAXIMA_PACKAGED").is_ok_and(|var| var == "1") {
+    if std::env::var("MAXIMA_PACKAGED").is_ok_and(|var| var == "1") {
         if let Err(err) = check_desktop_icon() {
             error!("Failed to register desktop icon! {}", err);
         }
@@ -107,12 +112,12 @@ async fn main() {
             .with_inner_size([1280.0, 720.0])
             .with_min_inner_size([940.0, 480.0])
             .with_app_id("io.github.ArmchairDevelopers.Maxima")
-            .with_icon(
+            .with_icon(Arc::new(
                 eframe::icon_data::from_png_bytes(
                     &include_bytes!("../../maxima-resources/assets/logo.png")[..],
                 )
                 .unwrap(),
-            ),
+            )),
         ..Default::default()
     };
     eframe::run_native(
@@ -120,8 +125,7 @@ async fn main() {
         native_options,
         Box::new(move |cc| {
             let app = MaximaEguiApp::new(cc, args);
-            // Run initialization code that needs access to the UI here, but DO NOT run any long-runtime functions here,
-            // as it's before the UI is shown
+            // TODO: Implement no_login bypass (skip auth initialization)
             if args.no_login {
                 return Ok(Box::new(app));
             }
@@ -297,7 +301,6 @@ pub struct MaximaEguiApp {
     backend: BridgeThread,
     /// what the backend doin?
     backend_state: BackendStallState,
-    /// what type of login we're using
     /// Slug of the game currently running, may not be fully accurate but it's good enough to let the user know the button was clicked
     playing_game: Option<String>,
     /// Currently downloading game
@@ -383,7 +386,7 @@ impl MaximaEguiApp {
                         bg_fill: F9B233,
                         bg_stroke: Stroke::NONE,
                         fg_stroke: Stroke::new(1.0, Color32::BLACK),
-                        rounding: Rounding::ZERO,
+                        corner_radius: CornerRadius::ZERO,
                         expansion: -1.0,
                     },
                     inactive: WidgetVisuals {
@@ -391,7 +394,7 @@ impl MaximaEguiApp {
                         bg_fill: Color32::BLACK,
                         bg_stroke: Stroke::new(2.0, Color32::WHITE),
                         fg_stroke: Stroke::new(1.5, Color32::WHITE),
-                        rounding: Rounding::same(2.0),
+                        corner_radius: CornerRadius::same(2),
                         expansion: -2.0,
                     },
                     active: WidgetVisuals {
@@ -399,7 +402,7 @@ impl MaximaEguiApp {
                         bg_fill: WIDGET_HOVER.linear_multiply(0.6),
                         bg_stroke: Stroke::NONE,
                         fg_stroke: Stroke::new(2.0, WIDGET_HOVER.linear_multiply(0.6)),
-                        rounding: Rounding::ZERO,
+                        corner_radius: CornerRadius::ZERO,
                         expansion: 0.0,
                     },
                     open: WidgetVisuals {
@@ -407,7 +410,7 @@ impl MaximaEguiApp {
                         bg_fill: WIDGET_HOVER.linear_multiply(0.0),
                         bg_stroke: Stroke::NONE,
                         fg_stroke: Stroke::new(2.0, WIDGET_HOVER.linear_multiply(0.0)),
-                        rounding: Rounding::ZERO,
+                        corner_radius: CornerRadius::ZERO,
                         expansion: 0.0,
                     },
                     ..Default::default()
@@ -421,7 +424,9 @@ impl MaximaEguiApp {
 
         fonts.font_data.insert(
             "ibm_plex".to_owned(),
-            FontData::from_static(include_bytes!("../fonts/IBMPlexSans-Regular.ttf")),
+            std::sync::Arc::new(FontData::from_static(include_bytes!(
+                "../fonts/IBMPlexSans-Regular.ttf"
+            ))),
         );
 
         fonts
@@ -432,7 +437,7 @@ impl MaximaEguiApp {
 
         fonts.families.get_mut(&FontFamily::Monospace).unwrap().push("ibm_plex".to_owned());
 
-        cc.egui_ctx.set_style(style);
+        cc.egui_ctx.set_global_style(style);
         cc.egui_ctx.set_fonts(fonts);
 
         #[cfg(debug_assertions)]
@@ -501,7 +506,7 @@ pub fn tab_bar_button(ui: &mut Ui, res: Response) {
     );
     ui.painter().rect_filled(
         res2,
-        Rounding::ZERO,
+        CornerRadius::ZERO,
         if res.hovered() {
             ACCENT_COLOR
         } else {
@@ -512,39 +517,39 @@ pub fn tab_bar_button(ui: &mut Ui, res: Response) {
 
 /// We used to have a semi-functional implementation that only worked on Mac, but, as i would say, we do not care 🗣️🗣️🗣️
 fn custom_window_frame(
-    enabled: bool, // disables the entire app, used for if the bg thread crashes
+    enabled: bool,
     crash_text: String,
-    ctx: &egui::Context,
-    _: &mut eframe::Frame,
+    ui: &mut egui::Ui,
+    _frame: &mut eframe::Frame,
     _title: &str,
     add_contents: impl FnOnce(&mut egui::Ui),
 ) {
     puffin::profile_function!();
     use egui::*;
 
-    let panel_frame = egui::Frame {
-        fill: Color32::RED,
-        rounding: 0.0.into(),
-        stroke: Stroke::NONE,
-        outer_margin: Margin {
-            left: APP_MARGIN.x,
-            right: APP_MARGIN.x,
-            top: APP_MARGIN.y + if !enabled { APP_MARGIN.y * 3.0 } else { 0.0 },
-            bottom: APP_MARGIN.y,
-        },
-        ..Default::default()
-    };
+    let panel_frame = egui::Frame::NONE.inner_margin(Margin {
+        left: APP_MARGIN.x as i8,
+        right: APP_MARGIN.x as i8,
+        top: APP_MARGIN.y as i8
+            + if !enabled {
+                (APP_MARGIN.y * 3.0) as i8
+            } else {
+                0
+            },
+        bottom: APP_MARGIN.y as i8,
+    });
 
-    CentralPanel::default().frame(panel_frame).show(ctx, |ui| {
+    // senpai ? could you draw all over my panel uwu
+    egui::CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
         if !enabled {
             let warning_rect = Rect {
-                min: Pos2::ZERO,
+                min: ui.max_rect().min,
                 max: pos2(
-                    ui.available_width() + APP_MARGIN.x * 2.0,
-                    APP_MARGIN.y * 3.0,
+                    ui.max_rect().max.x,
+                    ui.max_rect().min.y + APP_MARGIN.y * 3.0,
                 ),
             };
-            ui.painter().rect_filled(warning_rect, Rounding::same(0.0), Color32::RED);
+            ui.painter().rect_filled(warning_rect, CornerRadius::ZERO, Color32::RED);
             ui.painter().text(
                 warning_rect.center(),
                 Align2::CENTER_CENTER,
@@ -553,16 +558,19 @@ fn custom_window_frame(
                 Color32::BLACK,
             );
         }
-        ui.add_enabled_ui(enabled, add_contents);
+
+        panel_frame.show(ui, |ui| {
+            ui.add_enabled_ui(enabled, add_contents);
+        });
     });
 }
 
 /// Wrapper/helper for the tab buttons in the top left of the app
 fn tab_button(ui: &mut Ui, edit_var: &mut PageType, page: PageType, label: &str) {
     puffin::profile_function!();
-    ui.style_mut().visuals.widgets.inactive.rounding = Rounding::ZERO;
-    ui.style_mut().visuals.widgets.active.rounding = Rounding::ZERO;
-    ui.style_mut().visuals.widgets.hovered.rounding = Rounding::ZERO;
+    ui.style_mut().visuals.widgets.inactive.corner_radius = CornerRadius::ZERO;
+    ui.style_mut().visuals.widgets.active.corner_radius = CornerRadius::ZERO;
+    ui.style_mut().visuals.widgets.hovered.corner_radius = CornerRadius::ZERO;
     ui.style_mut().visuals.widgets.inactive.expansion = -1.0;
     ui.style_mut().visuals.widgets.active.expansion = -1.0;
     ui.style_mut().visuals.widgets.hovered.expansion = -1.0;
@@ -592,7 +600,7 @@ fn tab_button(ui: &mut Ui, edit_var: &mut PageType, page: PageType, label: &str)
 
     let test = ui.add_sized([120.0, 28.0], egui::Button::new(text));
     if test.clicked() {
-        *edit_var = page.clone();
+        *edit_var = page;
     }
 }
 
@@ -629,14 +637,14 @@ impl MaximaEguiApp {
         puffin::profile_function!();
         let navbar = egui::Frame::default()
             .stroke(Stroke::new(2.0, Color32::WHITE))
-            .inner_margin(Margin::same(0.0))
-            .outer_margin(Margin::same(2.0))
-            .rounding(Rounding::same(4.0));
+            .inner_margin(Margin::same(0))
+            .outer_margin(Margin::same(2))
+            .corner_radius(CornerRadius::same(4));
         navbar.show(header, |ui| {
             ui.horizontal(|ui| {
                 let loc = &self.locale.localization.menubar;
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.style_mut().visuals.widgets.inactive.rounding = Rounding::ZERO;
+                ui.style_mut().visuals.widgets.inactive.corner_radius = CornerRadius::ZERO;
                 tab_button(ui, &mut self.page_view, PageType::Games, &loc.games);
                 tab_button(ui, &mut self.page_view, PageType::Store, &loc.store);
                 tab_button(ui, &mut self.page_view, PageType::Settings, &loc.settings);
@@ -671,9 +679,10 @@ impl MaximaEguiApp {
             });
             rtl.painter().rect(
                 img_response.rect.expand(1.0),
-                Rounding::same(4.0),
+                CornerRadius::same(4),
                 Color32::TRANSPARENT,
                 stroke,
+                egui::StrokeKind::Inside,
             );
             let point = img_response.rect.left_center() + vec2(-rtl.spacing().item_spacing.x, 2.0);
 
@@ -712,7 +721,7 @@ impl MaximaEguiApp {
     }
 
     fn main(&mut self, app_rect: Rect, ui: &mut Ui) {
-        let outside_spacing = ui.spacing().item_spacing.x.clone();
+        let outside_spacing = ui.spacing().item_spacing.x;
         ui.add_enabled_ui(self.modal.is_none(), |ui| {
             ui.spacing_mut().item_spacing.y = outside_spacing;
             let strip = StripBuilder::new(ui).size(Size::exact(38.0)).size(Size::remainder());
@@ -752,7 +761,7 @@ impl MaximaEguiApp {
                         max: avail_rect.max,
                     };
 
-                    main.allocate_ui_at_rect(bigmain_rect, |bigmain| {
+                    main.scope_builder(UiBuilder::new().max_rect(bigmain_rect), |bigmain| {
                         puffin::profile_scope!("main view");
                         match self.page_view {
                             PageType::Games => games_view(self, bigmain),
@@ -763,7 +772,7 @@ impl MaximaEguiApp {
                             _ => undefined_view(self, bigmain),
                         }
                     });
-                    main.allocate_ui_at_rect(friends_rect, |friends| {
+                    main.scope_builder(UiBuilder::new().max_rect(friends_rect), |friends| {
                         friends_view(self, friends);
                     });
                 });
@@ -771,12 +780,15 @@ impl MaximaEguiApp {
         });
         let mut clear = false;
         if let Some(modal) = &self.modal {
-            ui.allocate_ui_at_rect(app_rect, |contents| {
+            ui.scope_builder(UiBuilder::new().max_rect(app_rect), |contents| {
                     egui::Frame::default()
                     .fill(Color32::from_black_alpha(200))
-                    .outer_margin(Margin::symmetric((app_rect.width() - 600.0) / 2.0, (app_rect.height() - 400.0) / 2.0))
-                    .inner_margin(Margin::same(12.0))
-                    .rounding(Rounding::same(8.0))
+                    .outer_margin(Margin::symmetric(
+                        (((app_rect.width() - 600.0) / 2.0).clamp(i8::MIN as f32, i8::MAX as f32)) as i8,
+                        (((app_rect.height() - 400.0) / 2.0).clamp(i8::MIN as f32, i8::MAX as f32)) as i8,
+                    ))
+                    .inner_margin(Margin::same(12))
+                    .corner_radius(CornerRadius::same(8))
                     .stroke(Stroke::new(4.0, Color32::WHITE))
                     .show(contents, |ui| {
                         ui.style_mut().spacing.interact_size = vec2(100.0, 30.0);
@@ -799,10 +811,13 @@ impl MaximaEguiApp {
                                         ui.add_enabled(game.has_cloud_saves, egui::Checkbox::new(&mut settings.cloud_saves, &self.locale.localization.modals.game_settings.cloud_saves));
 
                                         ui.label(&self.locale.localization.modals.game_settings.launch_arguments);
-                                        ui.add_sized(vec2(ui.available_width(), ui.style().spacing.interact_size.y), egui::TextEdit::singleline(&mut settings.launch_args).vertical_align(egui::Align::Center));
+                                        let launch_args_size = vec2(ui.available_width(), ui.style().spacing.interact_size.y);
+                                        ui.add_sized(
+                                            launch_args_size,
+                                            egui::TextEdit::singleline(&mut settings.launch_args).vertical_align(egui::Align::Center)
+                                        );
 
                                         ui.separator();
-
 
                                         let button_size = vec2(100.0, 30.0);
 
@@ -815,7 +830,8 @@ impl MaximaEguiApp {
 
                                         ui.separator();
                                     }
-                                    ui.allocate_space(ui.available_size_before_wrap() - vec2(0.0, ui.spacing().interact_size.y));
+                                    let remaining_space = ui.available_size_before_wrap() - vec2(0.0, ui.spacing().interact_size.y);
+                                    ui.allocate_space(remaining_space);
 
                                     ui.horizontal(|ui| {
                                         ui.label(positional_replace!(self.locale.localization.modals.game_settings.version, "version", &game.version.installed));
@@ -903,7 +919,7 @@ impl MaximaEguiApp {
                                     ui.horizontal(|ui| {
                                         ui.style_mut().visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, F9B233);
                                         ui.style_mut().visuals.widgets.hovered.expansion = -2.0;
-                                        ui.style_mut().visuals.widgets.hovered.rounding = Rounding::same(2.0);
+                                        ui.style_mut().visuals.widgets.hovered.corner_radius = CornerRadius::same(2);
                                         ui.add_sized(size, egui::TextEdit::singleline(&mut self.installer_state.install_folder).vertical_align(egui::Align::Center));
                                     });
                                     let path = PathBuf::from(self.installer_state.install_folder.clone());
@@ -957,7 +973,11 @@ impl MaximaEguiApp {
                                 ui.label(positional_replace!(&self.locale.localization.modals.game_launch_out_of_date.comparison, "local", &game.version.installed, "online", &game.version.latest));
 
                                 ui.with_layout(Layout::bottom_up(egui::Align::Min), |ui| {
-                                    if ui.add_sized([ui.available_size_before_wrap().x, ui.spacing().interact_size.y], egui::Button::new(&self.locale.localization.modals.game_launch_out_of_date.launch)).clicked() {
+                                    let launch_btn_size = [ui.available_size_before_wrap().x, ui.spacing().interact_size.y];
+                                    if ui.add_sized(
+                                        launch_btn_size,
+                                        egui::Button::new(&self.locale.localization.modals.game_launch_out_of_date.launch)
+                                    ).clicked() {
                                         self.playing_game = Some(game.slug.clone());
                                         let settings = self.settings.game_settings.get(&game.slug);
                                         let settings = if let Some(settings) = settings {
@@ -978,7 +998,8 @@ impl MaximaEguiApp {
                                 });
                             }
                         }
-                        ui.allocate_space(ui.available_size_before_wrap());
+                        let final_fill_size = ui.available_size_before_wrap();
+                        ui.allocate_space(final_fill_size);
                     });
                 });
         }
@@ -1015,42 +1036,39 @@ impl MaximaEguiApp {
             self.backend_state = BackendStallState::LoggingIn;
         }
     }
-}
 
-impl eframe::App for MaximaEguiApp {
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, "settings", &self.settings);
-    }
+    fn render_main_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if let Some(render) = &self.app_bg_renderer {
+            let mut fullrect = ui.available_rect_before_wrap();
+            fullrect.min -= APP_MARGIN;
+            fullrect.max += APP_MARGIN;
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        puffin::profile_function!();
-        bridge_processor::frontend_processor(self, ctx);
-        event_processor::frontend_processor(self, ctx);
+            let has_game_img =
+                self.backend_state == BackendStallState::BingChilling && !self.games.is_empty();
+            let gaming = self.page_view == PageType::Games && has_game_img;
+            let how_game: f32 =
+                ctx.animate_bool(egui::Id::new("MainAppBackgroundGamePageFadeBool"), gaming);
 
-        custom_window_frame(
-            self.critical_error.is_none(),
-            self.locale.localization.errors.critical_thread_crashed.clone(),
-            ctx,
-            frame,
-            "Maxima",
-            |ui| {
-                if let Some(render) = &self.app_bg_renderer {
-                    let mut fullrect = ui.available_rect_before_wrap().clone();
-                    fullrect.min -= APP_MARGIN;
-                    fullrect.max += APP_MARGIN;
-                    let has_game_img = self.backend_state == BackendStallState::BingChilling
-                        && self.games.len() > 0;
-                    let gaming = self.page_view == PageType::Games && has_game_img;
-                    let how_game: f32 = ctx
-                        .animate_bool(egui::Id::new("MainAppBackgroundGamePageFadeBool"), gaming);
-                    if has_game_img {
-                        if self.game_sel.is_empty() && self.games.len() > 0 {
-                            if let Some(key) = self.games.keys().next() {
-                                self.game_sel = key.clone()
-                            }
-                        }
+            if has_game_img {
+                if self.game_sel.is_empty() && !self.games.is_empty() {
+                    if let Some(key) = self.games.keys().next() {
+                        self.game_sel = key.clone();
+                    }
+                }
 
-                        match &self.img_cache.get(ui_image::UIImageType::Background(
+                match &self.img_cache.get(ui_image::UIImageType::Background(
+                    self.games[&self.game_sel].slug.clone(),
+                )) {
+                    Some(tex) => render.draw(
+                        ui,
+                        fullrect,
+                        tex.size_vec2(),
+                        tex.id(),
+                        how_game,
+                        self.settings.performance_settings,
+                    ),
+                    None => {
+                        match &self.img_cache.get(ui_image::UIImageType::Hero(
                             self.games[&self.game_sel].slug.clone(),
                         )) {
                             Some(tex) => render.draw(
@@ -1062,113 +1080,105 @@ impl eframe::App for MaximaEguiApp {
                                 self.settings.performance_settings,
                             ),
                             None => {
-                                match &self.img_cache.get(ui_image::UIImageType::Hero(
-                                    self.games[&self.game_sel].slug.clone(),
-                                )) {
-                                    Some(tex) => render.draw(
-                                        ui,
-                                        fullrect,
-                                        tex.size_vec2(),
-                                        tex.id(),
-                                        how_game,
-                                        self.settings.performance_settings,
-                                    ),
-                                    None => {
-                                        render.draw(
-                                            ui,
-                                            fullrect,
-                                            fullrect.size(),
-                                            TextureId::Managed(1),
-                                            0.0,
-                                            self.settings.performance_settings,
-                                        );
-                                    }
-                                }
+                                render.draw(
+                                    ui,
+                                    fullrect,
+                                    fullrect.size(),
+                                    TextureId::Managed(1),
+                                    0.0,
+                                    self.settings.performance_settings,
+                                );
                             }
                         }
-                    } else {
-                        render.draw(
-                            ui,
-                            fullrect,
-                            fullrect.size(),
-                            TextureId::Managed(1),
-                            0.0,
-                            self.settings.performance_settings,
-                        );
                     }
                 }
-                let app_rect = ui.available_rect_before_wrap().clone();
-                match self.backend_state {
-                    BackendStallState::Starting => {
-                        ui.painter().text(
-                            app_rect.center(),
-                            Align2::CENTER_CENTER,
-                            &self.locale.localization.startup_flow.starting,
-                            FontId::proportional(30.0),
-                            Color32::WHITE,
-                        );
-                        ui.put(app_rect, egui::Spinner::new().size(300.0));
-                    }
-                    BackendStallState::UserNeedsToInstallService => {
-                        let main_block_rect = ui.painter().text(
-                            app_rect.center(),
-                            Align2::CENTER_BOTTOM,
-                            &self.locale.localization.startup_flow.service_installer_description,
-                            egui::FontId::proportional(20.0),
-                            Color32::GRAY,
-                        );
-                        ui.painter().text(
-                            main_block_rect.center_top() - vec2(0.0, 4.0),
-                            Align2::CENTER_BOTTOM,
-                            &self.locale.localization.startup_flow.service_installer_header,
-                            egui::FontId::proportional(30.0),
-                            Color32::WHITE,
-                        );
-                        let button_rect = Rect {
-                            min: main_block_rect.center_bottom() + vec2(-60.0, 4.0),
-                            max: main_block_rect.center_bottom() + vec2(60.0, 34.0),
-                        };
-                        if ui
-                            .put(
-                                button_rect,
-                                egui::Button::new(
-                                    &self
-                                        .locale
-                                        .localization
-                                        .startup_flow
-                                        .service_installer_button
-                                        .to_ascii_uppercase(),
-                                ),
-                            )
-                            .clicked()
-                        {
-                            self.backend
-                                .backend_commander
-                                .send(bridge_thread::MaximaLibRequest::StartService)
-                                .unwrap();
-                            self.backend_state = BackendStallState::Starting;
-                        }
-                    }
-                    BackendStallState::UserNeedsToLogIn => {
-                        self.login(app_rect, ui);
-                    }
-                    BackendStallState::LoggingIn => {
-                        ui.painter().text(
-                            app_rect.center(),
-                            Align2::CENTER_CENTER,
-                            &self.locale.localization.startup_flow.logging_in,
-                            FontId::proportional(30.0),
-                            Color32::WHITE,
-                        );
-                        ui.put(app_rect, egui::Spinner::new().size(300.0));
-                    }
-                    BackendStallState::BingChilling => {
-                        self.main(app_rect, ui);
-                    }
+            } else {
+                render.draw(
+                    ui,
+                    fullrect,
+                    fullrect.size(),
+                    TextureId::Managed(1),
+                    0.0,
+                    self.settings.performance_settings,
+                );
+            }
+        }
+
+        let app_rect = ui.available_rect_before_wrap();
+        match self.backend_state {
+            BackendStallState::Starting => {
+                ui.painter().text(
+                    app_rect.center(),
+                    Align2::CENTER_CENTER,
+                    &self.locale.localization.startup_flow.starting,
+                    FontId::proportional(30.0),
+                    Color32::WHITE,
+                );
+                ui.put(app_rect, egui::Spinner::new().size(300.0));
+            }
+            BackendStallState::UserNeedsToInstallService => {
+                let main_block_rect = ui.painter().text(
+                    app_rect.center(),
+                    Align2::CENTER_BOTTOM,
+                    &self.locale.localization.startup_flow.service_installer_description,
+                    egui::FontId::proportional(20.0),
+                    Color32::GRAY,
+                );
+                ui.painter().text(
+                    main_block_rect.center_top() - vec2(0.0, 4.0),
+                    Align2::CENTER_BOTTOM,
+                    &self.locale.localization.startup_flow.service_installer_header,
+                    egui::FontId::proportional(30.0),
+                    Color32::WHITE,
+                );
+                let button_rect = Rect {
+                    min: main_block_rect.center_bottom() + vec2(-60.0, 4.0),
+                    max: main_block_rect.center_bottom() + vec2(60.0, 34.0),
                 };
-            },
-        );
-        puffin::GlobalProfiler::lock().new_frame();
+                if ui
+                    .put(
+                        button_rect,
+                        egui::Button::new(
+                            &self
+                                .locale
+                                .localization
+                                .startup_flow
+                                .service_installer_button
+                                .to_ascii_uppercase(),
+                        ),
+                    )
+                    .clicked()
+                {
+                    self.backend
+                        .backend_commander
+                        .send(bridge_thread::MaximaLibRequest::StartService)
+                        .unwrap();
+                    self.backend_state = BackendStallState::Starting;
+                }
+            }
+            BackendStallState::UserNeedsToLogIn => {
+                self.login(app_rect, ui);
+            }
+            BackendStallState::LoggingIn => {
+                ui.painter().text(
+                    app_rect.center(),
+                    Align2::CENTER_CENTER,
+                    &self.locale.localization.startup_flow.logging_in,
+                    FontId::proportional(30.0),
+                    Color32::WHITE,
+                );
+                ui.put(app_rect, egui::Spinner::new().size(300.0));
+            }
+            BackendStallState::BingChilling => {
+                self.main(app_rect, ui);
+            }
+        };
+    }
+}
+
+impl eframe::App for MaximaEguiApp {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, "settings", &self.settings);
     }
 
     fn on_exit(&mut self, _gl: Option<&glow::Context>) {
@@ -1176,5 +1186,27 @@ impl eframe::App for MaximaEguiApp {
             .backend_commander
             .send(bridge_thread::MaximaLibRequest::ShutdownRequest)
             .unwrap();
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        puffin::profile_function!();
+        bridge_processor::frontend_processor(self, ui.ctx());
+        event_processor::frontend_processor(self, ui.ctx());
+
+        let ctx = ui.ctx().clone();
+        custom_window_frame(
+            self.critical_error.is_none(),
+            if let Some(err) = &self.critical_error {
+                format!("{:?}", err)
+            } else {
+                String::new()
+            },
+            ui,
+            frame,
+            "Maxima",
+            |ui_inner| {
+                self.render_main_ui(ui_inner, &ctx);
+            },
+        );
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     core::service_layer::{
-        ServiceEntitlement, ServiceSdkEntitlementsRequestBuilder, ServiceSdkEntitlementsResult,
-        SERVICE_REQUEST_SDKENTITLEMENTS,
+        SERVICE_REQUEST_SDKENTITLEMENTS, ServiceEntitlement, ServiceSdkEntitlementsRequestBuilder,
+        ServiceSdkEntitlementsResult,
     },
     lsx::{
         connection::LockedConnectionState,
@@ -33,7 +33,8 @@ pub async fn handle_query_entitlements_request(
                 .include_child_groups(false)
                 .entitlement_tag("".to_string())
                 .group_names([request.attr_Group.clone()].to_vec())
-                .build().unwrap(),
+                .build()
+                .unwrap(),
         )
         .await?;
 

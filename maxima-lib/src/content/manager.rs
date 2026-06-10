@@ -1,8 +1,8 @@
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -18,17 +18,17 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     content::{
+        ContentService,
         downloader::{DownloadError, ZipDownloader},
         zip::{self, CompressionType, ZipError, ZipFileEntry},
-        ContentService,
     },
     core::{
-        auth::storage::LockedAuthStorage,
-        manifest::{self, ManifestError, MANIFEST_RELATIVE_PATH},
-        service_layer::ServiceLayerError,
         MaximaEvent,
+        auth::storage::LockedAuthStorage,
+        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
+        service_layer::ServiceLayerError,
     },
-    util::native::{maxima_dir, NativeError},
+    util::native::{NativeError, maxima_dir},
 };
 
 const QUEUE_FILE: &str = "download_queue.json";

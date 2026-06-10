@@ -77,17 +77,17 @@ pub fn register_service() -> Result<(), BackgroundServiceControlError> {
 }
 
 pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlError> {
-    let hscm = OpenSCManagerA(
+    let hscm = unsafe { OpenSCManagerA(
         std::ptr::null(),
         CString::new("ServicesActive")?.as_ptr(),
         SC_MANAGER_ALL_ACCESS,
-    );
+    ) };
 
-    let hservice = OpenServiceA(
+    let hservice = unsafe { OpenServiceA(
         hscm,
         CString::new(SERVICE_NAME)?.as_ptr(),
         SERVICE_ALL_ACCESS,
-    );
+    ) };
 
     if hservice.is_null() {
         return Err(BackgroundServiceControlError::Absent);
@@ -95,13 +95,13 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
 
     // Query the service object security
     let mut bytes_required: u32 = 0;
-    let result = QueryServiceObjectSecurity(
+    let result = unsafe { QueryServiceObjectSecurity(
         hservice,
         DACL_SECURITY_INFORMATION,
         std::ptr::null_mut(),
         0,
         &mut bytes_required,
-    );
+    ) };
 
     if result == 0 {
         // The initial call failed; check if the error was related to buffer size
@@ -117,13 +117,13 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
     let security_descriptor = security_descriptor_buffer.as_mut_ptr() as PSECURITY_DESCRIPTOR;
 
     // Query the service object security again with the correct buffer
-    let result = QueryServiceObjectSecurity(
+    let result = unsafe { QueryServiceObjectSecurity(
         hservice,
         DACL_SECURITY_INFORMATION,
         security_descriptor,
         bytes_required,
         &mut bytes_required,
-    );
+    ) };
 
     if result == 0 {
         return Err(BackgroundServiceControlError::ServiceObjectSecurity(
@@ -134,13 +134,13 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
     // Convert the security descriptor to a string
     let mut sddl_string: LPWSTR = std::ptr::null_mut();
     let mut sddl_string_len: u32 = 0;
-    let result = ConvertSecurityDescriptorToStringSecurityDescriptorW(
+    let result = unsafe { ConvertSecurityDescriptorToStringSecurityDescriptorW(
         security_descriptor,
         SDDL_REVISION_1.into(),
         DACL_SECURITY_INFORMATION,
         &mut sddl_string,
         &mut sddl_string_len,
-    );
+    ) };
 
     if result == 0 {
         return Err(BackgroundServiceControlError::SecurityDescriptorToString(
@@ -148,7 +148,7 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
         ));
     }
 
-    let sddl = U16CString::from_ptr_str(sddl_string).to_string_lossy();
+    let sddl = unsafe { U16CString::from_ptr_str(sddl_string).to_string_lossy() };
     let sddl_to_add = "(A;;RPWPCR;;;BU)";
     if sddl.contains(sddl_to_add) {
         return Ok(());
@@ -159,12 +159,12 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
 
     let mut amended_security_descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
     let mut amended_security_descriptor_len: u32 = 0;
-    let result = ConvertStringSecurityDescriptorToSecurityDescriptorW(
+    let result = unsafe { ConvertStringSecurityDescriptorToSecurityDescriptorW(
         U16CString::from_str(amended_sddl.as_str())?.as_ptr(),
         SDDL_REVISION_1.into(),
         &mut amended_security_descriptor,
         &mut amended_security_descriptor_len,
-    );
+    ) };
 
     if result == 0 {
         return Err(BackgroundServiceControlError::StringToSecurityDescriptor(
@@ -173,11 +173,11 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
     }
 
     // Set the service object security with the amended security descriptor
-    let result = SetServiceObjectSecurity(
+    let result = unsafe { SetServiceObjectSecurity(
         hservice,
         DACL_SECURITY_INFORMATION,
         amended_security_descriptor,
-    );
+    ) };
 
     if result == 0 {
         return Err(BackgroundServiceControlError::SecurityAttributes(
@@ -233,12 +233,13 @@ pub fn is_service_running() -> Result<bool, BackgroundServiceControlError> {
 }
 
 pub async fn start_service() -> Result<(), BackgroundServiceControlError> {
-    let service_manager = service_manager(false)?;
+    {
+        let service_manager = service_manager(false)?;
+        let service_result =
+            service_manager.open_service(OsString::from(SERVICE_NAME), ServiceAccess::START)?;
 
-    let service_result =
-        service_manager.open_service(OsString::from(SERVICE_NAME), ServiceAccess::START)?;
-
-    service_result.start(&[OsStr::new("")])?;
+        service_result.start(&[OsStr::new("")])?;
+    }
 
     while !is_service_running()? {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -248,12 +249,13 @@ pub async fn start_service() -> Result<(), BackgroundServiceControlError> {
 }
 
 pub async fn stop_service() -> Result<(), BackgroundServiceControlError> {
-    let service_manager = service_manager(false)?;
+    {
+        let service_manager = service_manager(false)?;
+        let service_result =
+            service_manager.open_service(OsString::from(SERVICE_NAME), ServiceAccess::STOP)?;
 
-    let service_result =
-        service_manager.open_service(OsString::from(SERVICE_NAME), ServiceAccess::STOP)?;
-
-    service_result.stop()?;
+        service_result.stop()?;
+    }
 
     while is_service_running()? {
         tokio::time::sleep(Duration::from_millis(100)).await;

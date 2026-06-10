@@ -23,25 +23,9 @@ use maxima::{
 };
 
 use maxima::{
-    content::downloader::ZipDownloader,
-    core::{
-        auth::{nucleus_token_exchange, TokenResponse},
-        clients::JUNO_PC_CLIENT_ID,
-        launch::LaunchMode,
-        library::OwnedTitle,
-        service_layer::{
-            ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder,
-            ServiceLegacyOffer, ServicePlayer, SERVICE_REQUEST_GETBASICPLAYER,
-            SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
-        },
-        LockedMaxima, MaximaOptionsBuilder,
-    },
-    ooa,
-    rtm::client::BasicPresence,
-};
-use maxima::{
     content::ContentService,
     core::{
+        Maxima, MaximaEvent,
         auth::{
             context::AuthContext,
             login::{begin_oauth_login_flow, manual_login},
@@ -49,22 +33,38 @@ use maxima::{
         },
         launch::{self, LaunchOptions},
         service_layer::ServiceUserGameProduct,
-        Maxima, MaximaEvent,
     },
     util::{log::init_logger, native::take_foreground_focus, registry::check_registry_validity},
+};
+use maxima::{
+    content::downloader::ZipDownloader,
+    core::{
+        LockedMaxima, MaximaOptionsBuilder,
+        auth::{TokenResponse, nucleus_token_exchange},
+        clients::JUNO_PC_CLIENT_ID,
+        launch::LaunchMode,
+        library::OwnedTitle,
+        service_layer::{
+            SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
+            ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder,
+            ServiceLegacyOffer, ServicePlayer,
+        },
+    },
+    ooa,
+    rtm::client::BasicPresence,
 };
 
 lazy_static! {
     static ref MANUAL_LOGIN_PATTERN: Regex = Regex::new(r"^(.*):(.*)$").unwrap();
 }
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use color_eyre::config::HookBuilder;
 use ratatui::{
     crossterm::{
-        event::{self, Event, KeyCode, KeyEventKind},
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         ExecutableCommand,
+        event::{self, Event, KeyCode, KeyEventKind},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
     prelude::*,
     style::palette::tailwind,
@@ -124,7 +124,9 @@ impl App {
     }
 
     fn draw(&self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
-        terminal.draw(|frame| frame.render_widget(self, frame.size()))?;
+        terminal
+            .draw(|frame| frame.render_widget(self, frame.area()))
+            .unwrap();
         Ok(())
     }
 
@@ -291,7 +293,13 @@ impl Widget for SelectedTab {
 impl SelectedTab {
     /// Return tab's name as a styled `Line`
     fn title(self) -> Line<'static> {
-        format!("  {self}  ")
+        let title = match self {
+            Self::Games => "Games",
+            Self::Downloads => "Downloads",
+            Self::Settings => "Settings",
+        };
+
+        format!("  {title}  ")
             .fg(tailwind::SLATE.c200)
             .bg(self.palette().c900)
             .into()

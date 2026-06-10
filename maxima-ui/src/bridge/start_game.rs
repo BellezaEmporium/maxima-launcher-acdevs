@@ -1,8 +1,8 @@
-use crate::{bridge_thread::BackendError, GameInfo, GameSettings};
+use crate::{GameInfo, GameSettings, bridge_thread::BackendError};
 use log::{debug, error, info};
 use maxima::core::{
-    launch::{self, LaunchError, LaunchMode, LaunchOptions},
     LockedMaxima,
+    launch::{self, LaunchError, LaunchMode, LaunchOptions},
 };
 
 pub async fn start_game_request(

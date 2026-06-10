@@ -1,4 +1,4 @@
-use actix_web::{error, http::header::ContentType, HttpResponse};
+use actix_web::{HttpResponse, error, http::header::ContentType};
 use reqwest::StatusCode;
 use thiserror::Error;
 

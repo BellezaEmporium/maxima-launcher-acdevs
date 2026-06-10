@@ -1,6 +1,6 @@
 use std::fs::File;
 
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use log::info;
 use maxima::util::registry::set_up_registry;
 use maxima::util::service::SERVICE_NAME;
@@ -20,7 +20,7 @@ use windows_service::{
 
 use crate::service::error::ServerError;
 use crate::service::hash::get_sha256_hash_of_pid;
-use maxima::core::background_service::{ServiceLibraryInjectionRequest, BACKGROUND_SERVICE_PORT};
+use maxima::core::background_service::{BACKGROUND_SERVICE_PORT, ServiceLibraryInjectionRequest};
 use maxima::util::dll_injector::{DllInjector, InjectionError};
 use maxima::util::native::SafeParent;
 

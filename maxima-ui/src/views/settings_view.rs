@@ -1,6 +1,6 @@
-use egui::{vec2, Ui};
+use egui::{Ui, vec2};
 
-use crate::{widgets::enum_dropdown::enum_dropdown, MaximaEguiApp};
+use crate::{MaximaEguiApp, widgets::enum_dropdown::enum_dropdown};
 
 pub fn settings_view(app: &mut MaximaEguiApp, ui: &mut Ui) {
     let localization = &app.locale.localization.settings_view;

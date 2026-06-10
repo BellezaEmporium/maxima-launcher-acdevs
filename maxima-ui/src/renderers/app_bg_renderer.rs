@@ -1,12 +1,11 @@
-use eframe::egui_glow;
 use eframe::glow::{BLEND, TEXTURE_2D};
 use egui::mutex::Mutex;
 use egui::{TextureId, Vec2};
-use egui_glow::glow;
 use log::error;
 use std::sync::Arc;
 
 use crate::FrontendPerformanceSettings;
+use crate::egui_glow;
 
 /// FUCK
 pub struct AppBgRenderer {
@@ -55,15 +54,15 @@ impl AppBgRenderer {
 #[allow(unsafe_code)] //MOM COME PICK ME UP, THEY'RE USING UNSAFE CODE
 struct ABGUnsafe {
     //I say this despite having used C++ for years before rust
-    program: glow::Program,
-    app_dimensions: glow::NativeUniformLocation,
-    img_dimensions: glow::NativeUniformLocation,
-    flags: glow::NativeUniformLocation,
+    program: egui_glow::glow::Program,
+    app_dimensions: egui_glow::glow::NativeUniformLocation,
+    img_dimensions: egui_glow::glow::NativeUniformLocation,
+    flags: egui_glow::glow::NativeUniformLocation,
 }
 
 impl ABGUnsafe {
-    fn new(gl: &glow::Context) -> Option<Self> {
-        use glow::HasContext as _;
+    fn new(gl: &egui_glow::glow::Context) -> Option<Self> {
+        use egui_glow::glow::HasContext as _;
 
         let glsl_version = egui_glow::ShaderVersion::get(gl);
 
@@ -80,8 +79,8 @@ impl ABGUnsafe {
             let fsource = include_str!("../../shaders/abg.frag");
 
             let shader_src = [
-                (glow::VERTEX_SHADER, vsource),
-                (glow::FRAGMENT_SHADER, fsource),
+                (egui_glow::glow::VERTEX_SHADER, vsource),
+                (egui_glow::glow::FRAGMENT_SHADER, fsource),
             ];
 
             let shaders: Vec<_> = shader_src
@@ -130,15 +129,15 @@ impl ABGUnsafe {
 
     fn paint(
         &self,
-        gl: &glow::Context,
+        gl: &egui_glow::glow::Context,
         size: Vec2,
         img_size: Vec2,
-        img: glow::Texture,
+        img: egui_glow::glow::Texture,
         game_fade: f32,
         flags: FrontendPerformanceSettings,
     ) {
         puffin::profile_function!();
-        use glow::HasContext as _;
+        use egui_glow::glow::HasContext as _;
         unsafe {
             gl.use_program(Some(self.program));
             gl.uniform_3_f32(Some(&self.app_dimensions), size.x, size.y, game_fade);
@@ -158,10 +157,10 @@ impl ABGUnsafe {
             //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             //glBlendFuncSeparate();
             /*
-            gl.blend_func(glow::FUNC_ADD, glow::ONE_MINUS_SRC_ALPHA);
+            gl.blend_func(egui_glow::glow::FUNC_ADD, egui_glow::glow::ONE_MINUS_SRC_ALPHA);
             */
-            //gl.draw_arrays(glow::TRIANGLES, 6, 6);
-            gl.draw_arrays(glow::TRIANGLES, 0, 12);
+            //gl.draw_arrays(egui_glow::glow::TRIANGLES, 6, 6);
+            gl.draw_arrays(egui_glow::glow::TRIANGLES, 0, 12);
         }
     }
 }

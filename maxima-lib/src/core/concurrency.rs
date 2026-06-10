@@ -1,4 +1,4 @@
-use futures::{stream, Future, StreamExt};
+use futures::{Future, StreamExt, stream};
 
 pub async fn execute_batch_concurrent<T, F, Fut, R>(
     buffer: usize,

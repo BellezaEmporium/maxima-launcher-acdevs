@@ -29,7 +29,7 @@ pub mod background_service {
 
 use std::{
     env,
-    fs::{create_dir_all, File},
+    fs::{File, create_dir_all},
     io,
     os::raw::c_char,
     path::PathBuf,
@@ -53,20 +53,19 @@ use self::{
     library::GameLibrary,
     locale::Locale,
     service_layer::{
-        ServiceAvatarListBuilder, ServiceAvatarListBuilderError, ServiceFriends,
-        ServiceGetBasicPlayerRequestBuilder, ServiceGetMyFriendsRequestBuilder,
+        SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETMYFRIENDS,
+        SERVICE_REQUEST_GETUSERPLAYER, ServiceAvatarListBuilder, ServiceAvatarListBuilderError,
+        ServiceFriends, ServiceGetBasicPlayerRequestBuilder, ServiceGetMyFriendsRequestBuilder,
         ServiceGetUserPlayerRequest, ServiceImage, ServiceImageBuilder, ServiceImageBuilderError,
         ServiceLayerClient, ServiceLayerError, ServicePlayer, ServicePlayerBuilder,
         ServicePlayerBuilderError, ServiceUser, ServiceUserBuilder, ServiceUserBuilderError,
-        SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETMYFRIENDS,
-        SERVICE_REQUEST_GETUSERPLAYER,
     },
 };
 use crate::{
     content::manager::{ContentManager, ContentManagerError},
     lsx::{self, service::LSXServerError, types::LSXRequestType},
     rtm::client::{BasicPresence, RtmClient},
-    util::native::{maxima_dir, NativeError},
+    util::native::{NativeError, maxima_dir},
 };
 
 #[derive(Clone, IntoStaticStr)]
@@ -433,7 +432,7 @@ impl Maxima {
 
     pub fn set_player_started(&mut self) {
         match &mut self.playing {
-            Some(ref mut playing) => playing.set_started(),
+            Some(playing) => playing.set_started(),
             None => return,
         }
     }

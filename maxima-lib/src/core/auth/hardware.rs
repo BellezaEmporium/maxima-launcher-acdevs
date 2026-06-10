@@ -57,13 +57,12 @@ impl HardwareInfo {
         use std::collections::HashMap;
 
         use log::warn;
-        use wmi::{COMLibrary, FilterValue, WMIConnection};
+        use wmi::{FilterValue, WMIConnection};
 
         use crate::util::wmi_utils;
 
         let wmi_thread = std::thread::spawn(move || {
-            let com_con = COMLibrary::new().unwrap();
-            let wmi_con = WMIConnection::new(com_con).unwrap();
+            let wmi_con = WMIConnection::new().unwrap();
 
             let os_data: Vec<wmi_utils::Win32OperatingSystem> = wmi_con.query().unwrap();
             let bios_data: Vec<wmi_utils::Win32BIOS> = wmi_con.query().unwrap();
@@ -250,7 +249,7 @@ impl HardwareInfo {
         use std::process::Command;
 
         use smbioslib::{
-            table_load_from_device, SMBiosBaseboardInformation, SMBiosSystemInformation,
+            SMBiosBaseboardInformation, SMBiosSystemInformation, table_load_from_device,
         };
 
         use crate::util::system_profiler_utils::SPDisplaysDataType;
@@ -282,7 +281,8 @@ impl HardwareInfo {
         let mut gpu_pnp_id: Option<String> = None;
         let output = Command::new("system_profiler")
             .args(["SPDisplaysDataType", "-json"])
-            .output().unwrap();
+            .output()
+            .unwrap();
         if output.status.success() {
             let json = String::from_utf8_lossy(&output.stdout);
             let result: SPDisplaysDataType = serde_json::from_str(&json).unwrap();
@@ -298,7 +298,10 @@ impl HardwareInfo {
         }
 
         let mut disk_sn = String::from("None");
-        let output = Command::new("diskutil").args(["info", "/"]).output().unwrap();
+        let output = Command::new("diskutil")
+            .args(["info", "/"])
+            .output()
+            .unwrap();
         // Check if the command was successful
         if output.status.success() {
             // Convert the output bytes to a UTF-8 string
@@ -348,8 +351,8 @@ impl HardwareInfo {
     pub fn get_cpu_details() -> CpuDetails {
         use core::arch::x86_64::__cpuid;
 
-        let m = unsafe { __cpuid(0) };
-        let flags = unsafe { __cpuid(1) };
+        let m = { __cpuid(0) };
+        let flags = { __cpuid(1) };
 
         let mut man = Vec::new();
         for val in [m.ebx, m.edx, m.ecx] {
@@ -360,7 +363,7 @@ impl HardwareInfo {
 
         let mut brand_name = Vec::with_capacity(47);
         'outer: for eax in [0x80000002, 0x80000003, 0x80000004] {
-            let part = unsafe { __cpuid(eax) };
+            let part = { __cpuid(eax) };
             for val in [part.eax, part.ebx, part.ecx, part.edx] {
                 for b in val.to_ne_bytes() {
                     if b == 0 {

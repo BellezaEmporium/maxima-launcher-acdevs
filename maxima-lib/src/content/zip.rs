@@ -1,9 +1,9 @@
 use bytebuffer::{ByteBuffer, Endian};
 use derive_getters::Getters;
-use encoding::{all::WINDOWS_1252, DecoderTrap, Encoding};
+use encoding_rs::WINDOWS_1252;
 use log::{debug, warn};
-use reqwest::header::ToStrError;
 use reqwest::Client;
+use reqwest::header::ToStrError;
 use std::cmp;
 use std::string::FromUtf8Error;
 use thiserror::Error;
@@ -165,10 +165,11 @@ impl ZipFileEntry {
             debug!("Using UTF-8...");
             String::from_utf8(name_bytes)?
         } else {
-            match WINDOWS_1252.decode(&name_bytes, DecoderTrap::Strict) {
-                Ok(s) => s,
-                Err(_) => return Err(EntryError::Decode),
+            let (s, _, had_errors) = WINDOWS_1252.decode(&name_bytes);
+            if had_errors {
+                return Err(EntryError::Decode);
             }
+            s.to_string()
         };
         entry.extra_field = data.read_bytes(extra_field_len as usize)?;
 
@@ -418,7 +419,7 @@ impl ZipFile {
                         idx: i,
                         total: eocd.total_entries,
                         err: format!("{:?}", err).to_string(),
-                    })
+                    });
                 }
                 Ok(e) => e,
             };

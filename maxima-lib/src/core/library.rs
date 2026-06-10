@@ -1,20 +1,20 @@
 use super::{
     auth::storage::LockedAuthStorage,
     locale::Locale,
-    manifest::{self, GameManifest, ManifestError, MANIFEST_RELATIVE_PATH},
+    manifest::{self, GameManifest, MANIFEST_RELATIVE_PATH, ManifestError},
     service_layer::{
+        SERVICE_REQUEST_GETLEGACYCATALOGDEFS, SERVICE_REQUEST_GETPRELOADEDOWNEDGAMES,
         ServiceGameProductType, ServiceGetLegacyCatalogDefsRequestBuilder,
         ServiceGetPreloadedOwnedGamesRequest, ServiceGetPreloadedOwnedGamesRequestBuilder,
         ServiceGetPreloadedOwnedGamesRequestBuilderError, ServiceLayerClient, ServiceLayerError,
         ServiceLegacyOffer, ServicePlatform, ServiceStorefront, ServiceUser,
-        ServiceUserGameProduct, SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
-        SERVICE_REQUEST_GETPRELOADEDOWNEDGAMES,
+        ServiceUserGameProduct,
     },
 };
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
 use crate::util::native::{NativeError, SafeStr};
-use crate::util::registry::{parse_partial_registry_path, parse_registry_path, RegistryError};
+use crate::util::registry::{RegistryError, parse_partial_registry_path, parse_registry_path};
 use derive_getters::Getters;
 use std::{collections::HashMap, path::PathBuf, time::SystemTimeError};
 use thiserror::Error;

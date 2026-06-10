@@ -15,7 +15,7 @@ use winapi::{
     shared::{minwindef::HKEY, winerror::ERROR_CANCELLED},
     um::{
         errhandlingapi::GetLastError,
-        shellapi::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE},
+        shellapi::{SEE_MASK_NO_CONSOLE, SEE_MASK_NOCLOSEPROCESS, ShellExecuteExW},
     },
     um::{
         winnt::KEY_QUERY_VALUE,
@@ -25,8 +25,8 @@ use winapi::{
 
 #[cfg(windows)]
 use winreg::{
-    enums::{HKEY_CLASSES_ROOT, HKEY_LOCAL_MACHINE, KEY_WRITE},
     RegKey,
+    enums::{HKEY_CLASSES_ROOT, HKEY_LOCAL_MACHINE, KEY_WRITE},
 };
 
 #[cfg(unix)]
@@ -35,7 +35,7 @@ use std::{collections::HashMap, env, fs};
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
 
-use super::native::{module_path, NativeError, SafeParent, SafeStr};
+use super::native::{NativeError, SafeParent, SafeStr, module_path};
 
 #[cfg(target_pointer_width = "64")]
 pub const REG_ARCH_PATH: &str = "SOFTWARE\\WOW6432Node";

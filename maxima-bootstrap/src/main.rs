@@ -8,12 +8,12 @@ use std::string::FromUtf8Error;
 use thiserror::Error;
 use tokio::process::Command;
 
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use maxima::core::launch::BootstrapLaunchArgs;
+use maxima::util::BackgroundServiceControlError;
 use maxima::util::native::NativeError;
 #[cfg(windows)]
 use maxima::util::service::{is_service_valid, register_service};
-use maxima::util::BackgroundServiceControlError;
 use url::Url;
 
 #[cfg(target_os = "macos")]
@@ -123,8 +123,8 @@ async fn platform_launch(args: BootstrapLaunchArgs) -> Result<(), NativeError> {
 
 #[cfg(unix)]
 async fn platform_launch(args: BootstrapLaunchArgs) -> Result<(), NativeError> {
-    use maxima::unix::wine::run_wine_command;
     use maxima::unix::wine::CommandType;
+    use maxima::unix::wine::run_wine_command;
 
     run_wine_command(
         args.path,

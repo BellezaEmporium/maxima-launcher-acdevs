@@ -1,12 +1,12 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use log::info;
 use maxima::core::{
-    auth::{
-        context::AuthContext, login::begin_oauth_login_flow, nucleus_token_exchange, TokenResponse,
-    },
     LockedMaxima, Maxima, MaximaOptionsBuilder,
+    auth::{
+        TokenResponse, context::AuthContext, login::begin_oauth_login_flow, nucleus_token_exchange,
+    },
 };
 
 pub struct InteractThreadLoginResponse {

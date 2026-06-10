@@ -6,15 +6,15 @@ use derive_getters::Getters;
 use log::{debug, error, info, warn};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 use super::{
+    RtmError,
     connection::RtmConnectionManager,
     proto::{
-        communication_v1, success_v1, BasicPresenceType, HeartbeatV1, LoginV3Response, Player,
-        PresenceUpdateV1, RichPresenceType, RichPresenceV1, SessionCleanupV1,
+        BasicPresenceType, HeartbeatV1, LoginV3Response, Player, PresenceUpdateV1,
+        RichPresenceType, RichPresenceV1, SessionCleanupV1, communication_v1, success_v1,
     },
-    RtmError,
 };
 use crate::{
     core::auth::storage::{AuthError, LockedAuthStorage, TokenError},
@@ -235,7 +235,8 @@ impl RtmClient {
         }).await?;
 
         for ele in res.connected_sessions {
-            let platform = PlatformV1::try_from(ele.platform)?;
+            let platform =
+                PlatformV1::try_from(ele.platform).unwrap_or(PlatformV1::UnknownPlatform);
             if platform != PlatformV1::Pc {
                 continue;
             }

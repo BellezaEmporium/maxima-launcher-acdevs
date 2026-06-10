@@ -4,7 +4,7 @@ use log::debug;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2_const::Sha256;
+use sha2_const;
 use thiserror::Error;
 
 use derive_builder::Builder;
@@ -98,7 +98,9 @@ pub struct ServiceLayerGraphQLRequest {
 macro_rules! load_graphql_request {
     ($type:ident, $operation:expr, $key:expr) => {{
         let content = include_str!(concat!("graphql/", $operation, ".gql"));
-        let hash = Sha256::new().update(content.as_bytes()).finalize();
+        let hash = sha2_const::Sha256::new();
+        hash.update(content.as_bytes());
+        let hash = hash.finalize();
         ServiceLayerGraphQLRequest {
             query: content,
             operation: $operation,
@@ -110,7 +112,7 @@ macro_rules! load_graphql_request {
 }
 
 macro_rules! define_graphql_request {
-    ($type:ident, $operation:expr, $key:expr) => { paste::paste! {
+    ($type:ident, $operation:expr, $key:expr) => { pastey::paste! {
         pub const [<SERVICE_REQUEST_ $operation:upper>]: &ServiceLayerGraphQLRequest = &load_graphql_request!($type, stringify!($operation), stringify!($key));
     }}
 }
@@ -271,7 +273,7 @@ impl ServiceLayerClient {
 
 macro_rules! service_layer_type {
     ($name:ident, { $($field:tt)* }) => {
-        paste::paste! {
+        pastey::paste! {
             #[derive(Clone, Debug, Serialize, Deserialize, Getters, Builder)]
             #[serde(rename_all = "camelCase")]
             #[repr(C)]
@@ -284,7 +286,7 @@ macro_rules! service_layer_type {
 
 macro_rules! service_layer_enum {
     ($name:ident, { $($field:tt)* }) => {
-        paste::paste! {
+        pastey::paste! {
             #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
             #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
             #[repr(C)]

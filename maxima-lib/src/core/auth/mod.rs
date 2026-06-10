@@ -12,7 +12,7 @@ use super::{
 use crate::core::auth::storage::{AuthError, TokenError};
 use context::AuthContext;
 use derive_getters::Getters;
-use reqwest::{redirect, Client, Url};
+use reqwest::{Client, Url, redirect};
 use serde::Deserialize;
 use thiserror::Error;
 

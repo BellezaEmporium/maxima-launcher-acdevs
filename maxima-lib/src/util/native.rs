@@ -143,14 +143,14 @@ unsafe extern "system" fn enum_windows_proc(
 ) -> winapi::shared::minwindef::BOOL {
     let mut window_process_id: u32 = 0;
 
-    GetWindowThreadProcessId(hwnd, &mut window_process_id);
+    unsafe { GetWindowThreadProcessId(hwnd, &mut window_process_id) };
 
-    if window_process_id != std::process::id() || IsWindowVisible(hwnd) == 0 {
+    if window_process_id != std::process::id() || unsafe { IsWindowVisible(hwnd) } == 0 {
         return winapi::shared::minwindef::TRUE;
     }
 
-    if IsWindowVisible(hwnd) != 0 {
-        SetForegroundWindow(hwnd);
+    if unsafe { IsWindowVisible(hwnd) } != 0 {
+        unsafe { SetForegroundWindow(hwnd) };
     }
 
     winapi::shared::minwindef::TRUE

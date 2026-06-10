@@ -1,12 +1,12 @@
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use lazy_static::lazy_static;
 use log::debug;
 use regex::Regex;
 use serde::Serialize;
 
 use crate::{
-    unix::wine::{run_wine_command, CommandType},
-    util::native::{module_path, NativeError, SafeParent, SafeStr},
+    unix::wine::{CommandType, run_wine_command},
+    util::native::{NativeError, SafeParent, SafeStr, module_path},
 };
 
 lazy_static! {
