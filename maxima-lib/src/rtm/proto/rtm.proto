@@ -16,10 +16,15 @@ message CommunicationV1 {
         PresenceSubscribeV1 presenceSubscribe = 2;
         PresenceUpdateV1 presenceUpdate = 5;
         PresenceV1 presence = 7;
+        PlayerContextV1 playerContext = 9;
+        ConversationChannelV1 conversationChannel = 11;
+        ConversationHistoryRequestV1 historyRequest = 12;  // outer msg, not oneof
         ErrorV1 error = 13;
         ReconnectRequestV1 reconnectRequest = 14;
         SuccessV1 success = 15;
         HeartbeatV1 heartbeat = 20;
+        TypingEventV1 typingEvent = 43;
+        string unknown44 = 44; // unsure yet
         LoginRequestV3 loginRequestV3 = 46;
         SessionCleanupV1 sessionCleanupV1 = 49;
     }
