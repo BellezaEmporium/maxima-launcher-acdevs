@@ -4,6 +4,7 @@ package eadp.rtm;
 import "common.proto";
 import "requests.proto";
 import "responses.proto";
+import "chat.proto";
 
 message Communication {
     CommunicationV1 v1 = 1;
