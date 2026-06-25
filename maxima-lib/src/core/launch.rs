@@ -100,10 +100,7 @@ pub enum LaunchMode {
 impl LaunchMode {
     // What an awful name
     pub fn is_online_offline(&self) -> bool {
-        match self {
-            LaunchMode::OnlineOffline(_, _, _) => true,
-            _ => false,
-        }
+        matches!(self, LaunchMode::OnlineOffline(_, _, _))
     }
 }
 
@@ -121,6 +118,10 @@ pub struct ActiveGameContext {
 }
 
 impl ActiveGameContext {
+    pub fn current_offer(&self) -> Option<OwnedOffer> {
+        self.offer.clone()
+    }
+
     pub fn new(
         launch_id: &str,
         game_path: &str,
@@ -311,14 +312,14 @@ pub async fn start_game(
 
     child
         .current_dir(PathBuf::from(path).safe_parent()?)
-        .env("MXLaunchId", launch_id.to_owned())
+        .env("MXLaunchId", &launch_id)
         .env("EAAuthCode", "unavailable")
         .env("EAEgsProxyIpcPort", "0")
         .env("EAEntitlementSource", "EA")
         .env("EAExternalSource", "EA")
         .env("EAFreeTrialGame", "false")
         .env("EAGameLocale", maxima.locale.full_str())
-        .env("EAGenericAuthToken", access_token.to_owned())
+        .env("EAGenericAuthToken", &access_token)
         .env("EALaunchCode", "unavailable")
         .env("EALaunchOwner", "EA")
         .env(
@@ -378,7 +379,7 @@ pub async fn start_game(
 
 async fn request_opaque_ooa_token(access_token: &str) -> Result<String, AuthError> {
     let mut context = AuthContext::new()?;
-    context.set_access_token(&access_token);
+    context.set_access_token(access_token);
     context.set_token_format("OPAQUE");
     context.set_expires_in(550);
 

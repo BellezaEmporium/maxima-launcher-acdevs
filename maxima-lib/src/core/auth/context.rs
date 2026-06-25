@@ -42,7 +42,7 @@ impl AuthContext<'_> {
 
     fn generate_code_verifier() -> String {
         let rand_bytes: [u8; 32] = random();
-        URL_SAFE_NO_PAD.encode(&rand_bytes)
+        URL_SAFE_NO_PAD.encode(rand_bytes)
     }
 
     fn generate_challenge(code_verifier: &String) -> String {

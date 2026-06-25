@@ -16,15 +16,10 @@ use maxima::{
         ContentManager, ContentManagerError, QueuedGameBuilder, QueuedGameBuilderError,
     },
     core::{
-        LockedMaxima, Maxima, MaximaCreationError, MaximaOptionsBuilder, MaximaOptionsBuilderError,
-        auth::storage::{AuthError, TokenError},
-        launch::LaunchError,
-        library::LibraryError,
-        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
-        service_layer::{
+        LockedMaxima, Maxima, MaximaCreationError, MaximaEvent, MaximaOptionsBuilder, MaximaOptionsBuilderError, auth::storage::{AuthError, TokenError}, launch::LaunchError, library::LibraryError, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::{
             ServiceGameImagesRequestBuilderError, ServiceHeroBackgroundImageRequestBuilderError,
             ServiceLayerError, ServicePlayer,
-        },
+        }
     },
     lsx::service::LSXServerError,
     rtm::RtmError,
@@ -33,11 +28,11 @@ use maxima::{
         registry::{RegistryError, check_registry_validity, set_up_registry},
     },
 };
-use std::sync::mpsc::{SendError, TryRecvError};
+use tokio::sync::mpsc::{
+    Sender, UnboundedReceiver, UnboundedSender, error::{SendError, TryRecvError}, unbounded_channel,
+};
 use std::{
-    panic,
     path::PathBuf,
-    sync::mpsc::{Receiver, Sender},
     time::{Duration, SystemTime},
 };
 
@@ -105,11 +100,10 @@ pub enum MaximaLibResponse {
     DownloadQueueUpdate(Option<String>, Vec<String>),
 }
 pub struct BridgeThread {
-    pub backend_listener: Receiver<MaximaLibResponse>,
-    pub backend_commander: Sender<MaximaLibRequest>,
-
-    pub rtm_listener: Receiver<MaximaEventResponse>,
-    pub rtm_commander: Sender<MaximaEventRequest>, // currently unused except for shutdown
+    pub backend_listener: UnboundedReceiver<MaximaLibResponse>,
+    pub backend_commander: UnboundedSender<MaximaLibRequest>,
+    pub rtm_listener: UnboundedReceiver<MaximaEventResponse>,
+    pub rtm_commander: UnboundedSender<MaximaEventRequest>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -152,11 +146,11 @@ pub enum BackendError {
     ServiceLayer(#[from] ServiceLayerError),
     #[error(transparent)]
     Token(#[from] TokenError),
-    #[error(transparent)]
-    TryRecv(#[from] TryRecvError),
 
     #[error("backend-frontend communication channel disconnected")]
     ChannelDisconnected,
+    #[error("no live build available for the requested offer")]
+    NoLiveBuildAvailable,
     #[error("tried to perform an action that requires being logged in, but was logged out")]
     LoggedOut,
 }
@@ -164,7 +158,7 @@ pub enum BackendError {
 impl BridgeThread {
     fn update_queue(
         content_manager: &ContentManager,
-        backend_responder: Sender<MaximaLibResponse>,
+        backend_responder: UnboundedSender<MaximaLibResponse>,
     ) {
         let current = if let Some(now) = content_manager.queue().current() {
             Some(now.offer_id().to_owned())
@@ -183,35 +177,38 @@ impl BridgeThread {
             .unwrap();
     }
 
-    pub fn new(ctx: &Context, remote_provider_channel: Sender<UIImageCacheLoaderCommand>) -> Self {
+    pub fn new(ctx: &Context, remote_provider_channel: UnboundedSender<UIImageCacheLoaderCommand>) -> Self {
         puffin::profile_function!();
-        let (backend_commander, backend_cmd_listener) = std::sync::mpsc::channel();
-        let (backend_responder, backend_listener) = std::sync::mpsc::channel();
-
-        let (rtm_commander, rtm_cmd_listener) = std::sync::mpsc::channel();
-        let (rtm_responder, rtm_listener) = std::sync::mpsc::channel();
+        let (backend_commander, backend_cmd_listener) = unbounded_channel();
+        let (backend_responder, backend_listener) = unbounded_channel();
+        let (rtm_commander, rtm_cmd_listener) = unbounded_channel();
+        let (rtm_responder, rtm_listener) = unbounded_channel();
         let context = ctx.clone();
+
+        let backend_responder_for_task = backend_responder.clone();
+        let remote_provider_for_task = remote_provider_channel.clone();
+
 
         // you dare spawn a thread without catching my sneaky sneaky panics mister Potter ??
         tokio::task::spawn(async move {
-            let die_fallback_transmitter = backend_responder.clone();
-            //panic::set_hook(Box::new( |_| {}));
-            let result = BridgeThread::run(
+            let die_fallback = backend_responder_for_task.clone();
+            match BridgeThread::run(
                 backend_cmd_listener,
-                backend_responder,
+                backend_responder_for_task,
                 rtm_cmd_listener,
                 rtm_responder,
-                remote_provider_channel,
+                remote_provider_for_task,
                 &context,
-            )
-            .await;
-            if let Err(err) = result {
-                die_fallback_transmitter
-                    .send(MaximaLibResponse::CriticalError(Box::from(err)))
-                    .unwrap();
-            } else {
-                info!("Interact thread shut down")
+            ).await {
+                Ok(()) => (),
+                Err(err) => {
+                    error!("BridgeThread task: run() returned Err: {}", err);
+                    let _ = die_fallback
+                        .send(MaximaLibResponse::NonFatalError(Box::from(err)));
+                }
             }
+
+            info!("Interact thread shut down");
         });
 
         Self {
@@ -223,49 +220,48 @@ impl BridgeThread {
     }
 
     async fn run(
-        backend_cmd_listener: Receiver<MaximaLibRequest>,
-        backend_responder: Sender<MaximaLibResponse>,
-        rtm_cmd_listener: Receiver<MaximaEventRequest>,
-        rtm_responder: Sender<MaximaEventResponse>,
-        remote_provider_channel: Sender<UIImageCacheLoaderCommand>,
+        mut backend_cmd_listener: UnboundedReceiver<MaximaLibRequest>,
+        backend_responder: UnboundedSender<MaximaLibResponse>,
+        rtm_cmd_listener: UnboundedReceiver<MaximaEventRequest>,
+        rtm_responder: UnboundedSender<MaximaEventResponse>,
+        remote_provider_channel: UnboundedSender<UIImageCacheLoaderCommand>,
         ctx: &Context,
     ) -> Result<(), BackendError> {
         // first things first check registry
         // the flow is different for windows/linux but windows needs an extra user prompt,
         // so we're doing both here, instead of selectively cfg'd functions!
         #[cfg(not(windows))]
-        {
-            if let Err(err) = check_registry_validity() {
-                warn!("{}, fixing...", err);
-                set_up_registry()?;
-            }
+        if let Err(err) = check_registry_validity() {
+            warn!("{}, fixing...", err);
+            set_up_registry()?;
         }
+
         #[cfg(windows)]
         {
             use maxima::{
                 core::background_service::request_registry_setup,
                 util::{
                     registry::check_registry_validity,
-                    service::{
-                        is_service_running, is_service_valid, register_service_user, start_service,
-                    },
+                    service::{is_service_running, is_service_valid, register_service_user, start_service},
                 },
             };
+
             if !is_elevated::is_elevated() {
                 if !is_service_valid()? {
                     info!("Installing service...");
-                    backend_responder.send(MaximaLibResponse::ServiceNeedsStarting)?;
-                    'wait_for_user_to_authorize: loop {
-                        let request = backend_cmd_listener.try_recv();
-                        if request.is_err() {
-                            continue;
-                        }
+                    backend_responder.send(MaximaLibResponse::ServiceNeedsStarting).ok();
 
-                        match request.unwrap() {
+                    'wait_for_auth: loop {
+                        let Some(request) = backend_cmd_listener.recv().await else {
+                            info!("Backend command channel closed, shutting down");
+                            return Ok(());
+                        };
+
+                        match request {
                             MaximaLibRequest::StartService => {
                                 register_service_user()?;
-                                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                                break 'wait_for_user_to_authorize;
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                break 'wait_for_auth;
                             }
                             MaximaLibRequest::ShutdownRequest => return Ok(()),
                             _ => {}
@@ -289,8 +285,8 @@ impl BridgeThread {
                 .dummy_local_user(false)
                 .load_auth_storage(true)
                 .build()?,
-        )
-        .await?;
+        ).await?;
+
 
         let logged_in = {
             let maxima = maxima_arc.lock().await;
@@ -302,24 +298,20 @@ impl BridgeThread {
         };
 
         if !logged_in {
-            backend_responder.send(MaximaLibResponse::LoginCacheEmpty)?;
-            'outer: loop {
-                let request = backend_cmd_listener.try_recv();
-                if request.is_err() {
-                    continue;
-                }
+            backend_responder.send(MaximaLibResponse::LoginCacheEmpty).ok();
 
-                match request? {
+            'login: loop {
+                let Ok(request) = backend_cmd_listener.try_recv() else {
+                    continue;
+                };
+                match request {
                     MaximaLibRequest::LoginRequestOauth => {
-                        let channel = backend_responder.clone();
-                        let maxima = maxima_arc.clone();
-                        let context = ctx.clone();
-                        async move { login_oauth(maxima, channel, &context).await }
-                            .await
-                            .expect("// TODO(headassbtw): panic message");
-                        break 'outer;
+                        login_oauth(maxima_arc.clone(), backend_responder.clone(), ctx).await.expect("// TODO(headassbtw): panic message");
+                        break 'login;
                     }
-                    MaximaLibRequest::ShutdownRequest => return Ok(()),
+                    MaximaLibRequest::ShutdownRequest => {
+                        return Ok(());
+                    }
                     _ => {}
                 }
             }
@@ -330,14 +322,15 @@ impl BridgeThread {
             let user = maxima.local_user().await?;
 
             if logged_in {
-                let message = MaximaLibResponse::LoginResponse(Ok(InteractThreadLoginResponse {
-                    you: user.player().as_ref().unwrap().to_owned(),
-                }));
-                backend_responder.send(message)?;
+                backend_responder.send(MaximaLibResponse::LoginResponse(Ok(
+                    InteractThreadLoginResponse {
+                        you: user.player().as_ref().unwrap().to_owned(),
+                    }
+                ))).ok();
             }
-            let res = remote_provider_channel.send(UIImageCacheLoaderCommand::ProvideRemote(
-                crate::ui_image::UIImageType::Avatar(user.id().to_string()),
-                user.player()
+
+            let avatar_result: Result<(), BackendError> = (|| async {
+            let avatar = user.player()
                     .as_ref()
                     .ok_or(ServiceLayerError::MissingField)?
                     .avatar()
@@ -345,48 +338,50 @@ impl BridgeThread {
                     .ok_or(ServiceLayerError::MissingField)?
                     .medium()
                     .path()
-                    .to_string(),
-            ));
-            if let Err(err) = res {
-                error!("failed to send user pfp to loader: {:?}", err);
+                    .to_string();
+
+                remote_provider_channel.send(UIImageCacheLoaderCommand::ProvideRemote(
+                    crate::ui_image::UIImageType::Avatar(user.id().to_string()),
+                    avatar,
+                )).ok();
+                Ok(())
+            })().await;
+            
+            if let Err(e) = avatar_result {
+                warn!("Failed to load user avatar: {}", e);
+                // continue anyway
             }
+            
             ctx.request_repaint();
         }
 
-        let _ = EventThread::new(
-            &ctx.clone(),
-            maxima_arc.clone(),
-            rtm_cmd_listener,
-            rtm_responder,
-        );
+        let _ = EventThread::new(&ctx.clone(), maxima_arc.clone(), rtm_cmd_listener, rtm_responder);
 
-        let mut future = SystemTime::now();
-        future = future.checked_add(Duration::from_millis(50)).unwrap();
+        let mut next_tick = SystemTime::now() + Duration::from_millis(50);
         let mut playing_cache: Option<String> = None;
-        'outer: loop {
-            let now = SystemTime::now();
-            if now >= future {
-                // this sucks but it's non-blocking so oh well what are you going to do about it! it's on a non-ui thread anyway, i'm wasteful with it
-                future = now.checked_add(Duration::from_millis(50)).unwrap();
 
+        'main: loop {
+            let now = SystemTime::now();
+            
+            if now >= next_tick {
+                next_tick = now + Duration::from_millis(50);
                 let mut maxima = maxima_arc.lock().await;
                 maxima.update().await;
-                let now_playing = maxima.playing();
 
-                if let Some(ctx) = now_playing {
-                    if let Some(offer) = ctx.offer() {
-                        if playing_cache.is_none() {
+                match maxima.playing() {
+                    Some(ctx) if playing_cache.is_none() => {
+                        if let Some(offer) = ctx.offer() {
                             playing_cache = Some(offer.slug().clone());
-                            backend_responder.send(MaximaLibResponse::ActiveGameChanged(Some(
-                                offer.slug().clone(),
-                            )))?;
+                            backend_responder.send(MaximaLibResponse::ActiveGameChanged(
+                                Some(offer.slug().clone())
+                            )).ok();
                         }
                     }
-                } else {
-                    if playing_cache.is_some() {
+                    None if playing_cache.is_some() => {
                         playing_cache = None;
-                        backend_responder.send(MaximaLibResponse::ActiveGameChanged(None)).unwrap();
-                    };
+                        backend_responder.send(MaximaLibResponse::ActiveGameChanged(None)).ok();
+                    }
+                    _ => {}
                 }
 
                 if let Some(dl) = maxima.content_manager().current() {
@@ -396,123 +391,113 @@ impl BridgeThread {
                             bytes: dl.bytes_downloaded(),
                             bytes_total: dl.bytes_total(),
                         },
-                    ))?;
+                    )).ok();
                 }
 
                 for ev in maxima.consume_pending_events() {
                     match ev {
-                        maxima::core::MaximaEvent::ReceivedLSXRequest(_, _) => {}
-                        maxima::core::MaximaEvent::InstallFinished(offer_id) => {
-                            backend_responder
-                                .send(MaximaLibResponse::DownloadFinished(offer_id))?;
+                        MaximaEvent::ReceivedLSXRequest(_, _) => {}
+                        MaximaEvent::InstallFinished(offer_id) => {
+                            backend_responder.send(MaximaLibResponse::DownloadFinished(offer_id)).ok();
                             Self::update_queue(maxima.content_manager(), backend_responder.clone());
                         }
                     }
                 }
             }
-            let request = backend_cmd_listener.try_recv();
-            if request.is_err() {
-                continue;
-            }
 
-            let action = match request? {
+            let Some(request) = backend_cmd_listener.recv().await else {
+                continue 'main;
+            };
+
+            let result: Result<(), BackendError> = match request {
                 MaximaLibRequest::LoginRequestOauth | MaximaLibRequest::StartService => {
                     error!("bro tried to log in twice");
                     Ok(())
                 }
+
                 MaximaLibRequest::GetGamesRequest => {
-                    let channel = backend_responder.clone();
-                    let channel1 = remote_provider_channel.clone();
                     let maxima = maxima_arc.clone();
+                    let responder = backend_responder.clone();
+                    let remote = remote_provider_channel.clone();
                     let context = ctx.clone();
-                    async move { get_games_request(maxima, channel, channel1, &context).await }
-                        .await
+                    tokio::task::spawn(async move {
+                        if let Err(e) = get_games_request(maxima, responder.clone(), remote, &context).await {
+                            let _ = responder.send(MaximaLibResponse::NonFatalError(Box::from(e))).ok();
+                        }
+                    });
+                    Ok(())
                 }
                 MaximaLibRequest::GetFriendsRequest => {
-                    let channel = backend_responder.clone();
-                    let channel1 = remote_provider_channel.clone();
-                    let maxima = maxima_arc.clone();
-                    let context = ctx.clone();
-                    async move { get_friends_request(maxima, channel, channel1, &context).await }
-                        .await
+                    let f = async || get_friends_request(maxima_arc.clone(), backend_responder.clone(), remote_provider_channel.clone(), ctx).await;
+                    f().await
                 }
                 MaximaLibRequest::GetGameDetailsRequest(slug) => {
-                    let channel = backend_responder.clone();
-                    let maxima = maxima_arc.clone();
-                    let context = ctx.clone();
-                    async move { game_details_request(maxima, slug.clone(), channel, &context).await }.await
+                    let f = async || game_details_request(maxima_arc.clone(), slug, backend_responder.clone(), ctx).await;
+                    f().await
                 }
-                MaximaLibRequest::LocateGameRequest(path) => {
+                MaximaLibRequest::LocateGameRequest(mut path) => {
                     #[cfg(unix)]
                     maxima::core::launch::mx_linux_setup().await?;
-                    let mut path = path;
-                    if path.ends_with("/") || path.ends_with("\\") {
-                        path.remove(path.len() - 1);
+
+                    // strip trailing slash
+                    if path.ends_with('/') || path.ends_with('\\') {
+                        path.pop();
                     }
+
                     let path = PathBuf::from(path);
-                    let manifest = manifest::read(path.join(MANIFEST_RELATIVE_PATH)).await;
-                    if let Ok(manifest) = manifest {
-                        let guh = manifest.run_touchup(&path).await;
-                        if let Err(err) = guh {
-                            let _ = backend_responder.send(MaximaLibResponse::LocateGameResponse(
-                                InteractThreadLocateGameResponse::Error(
-                                    InteractThreadLocateGameFailure {
-                                        reason: err,
-                                        xml_path: path
-                                            .join(MANIFEST_RELATIVE_PATH)
-                                            .to_str()
-                                            .unwrap()
-                                            .to_string(),
-                                    },
-                                ),
-                            ));
-                        } else {
-                            let _ = backend_responder.send(MaximaLibResponse::LocateGameResponse(
-                                InteractThreadLocateGameResponse::Success,
-                            ));
-                        }
-                    } else {
-                        let _ = backend_responder.send(MaximaLibResponse::LocateGameResponse(
-                            InteractThreadLocateGameResponse::Error(
+                    let manifest_path = path.join(MANIFEST_RELATIVE_PATH);
+                    
+                    let response = match manifest::read(manifest_path.clone()).await {
+                        Ok(manifest) => match manifest.run_touchup(&path).await {
+                            Ok(()) => InteractThreadLocateGameResponse::Success,
+                            Err(err) => InteractThreadLocateGameResponse::Error(
                                 InteractThreadLocateGameFailure {
-                                    reason: manifest.unwrap_err(),
-                                    xml_path: path
-                                        .join(MANIFEST_RELATIVE_PATH)
-                                        .to_str()
-                                        .unwrap()
-                                        .to_string(),
-                                },
+                                    reason: err,
+                                    xml_path: manifest_path.to_string_lossy().into_owned(),
+                                }
                             ),
-                        ));
-                    }
+                        }
+                        Err(err) => InteractThreadLocateGameResponse::Error(
+                            InteractThreadLocateGameFailure {
+                                reason: err,
+                                xml_path: manifest_path.to_string_lossy().into_owned(),
+                            }
+                        ),
+                    };
+
+                    let _ = backend_responder.send(MaximaLibResponse::LocateGameResponse(response)).ok();
                     info!("finished locating");
                     ctx.request_repaint();
                     Ok(())
                 }
+
                 MaximaLibRequest::InstallGameRequest(offer, path) => {
                     let mut maxima = maxima_arc.lock().await;
-                    let builds =
-                        maxima.content_manager().service().available_builds(&offer).await?;
-                    let build = if let Some(build) = builds.live_build() {
-                        build
-                    } else {
-                        continue;
-                    };
+                    let builds = maxima.content_manager().service().available_builds(&offer).await?;
+                    let build = builds
+                        .live_build()
+                        .ok_or(BackendError::NoLiveBuildAvailable)?;
 
                     let game = QueuedGameBuilder::default()
                         .offer_id(offer)
                         .build_id(build.build_id().to_owned())
-                        .path(path.to_owned())
+                        .path(path)
                         .build()?;
                     Ok(maxima.content_manager().add_install(game).await?)
                 }
                 MaximaLibRequest::StartGameRequest(info, settings) => {
                     Ok(start_game_request(maxima_arc.clone(), info, settings).await?)
                 }
-                MaximaLibRequest::ShutdownRequest => break 'outer Ok(()), //TODO: kill the bridge thread
+                MaximaLibRequest::ShutdownRequest => {
+                    info!("BridgeThread: received shutdown request");
+                    break 'main Ok(());
+                }
             };
-            if let Err(err) = action {
-                let _ = backend_responder.send(MaximaLibResponse::NonFatalError(Box::from(err)));
+
+            if let Err(err) = result {
+                let _ = backend_responder
+                    .send(MaximaLibResponse::NonFatalError(Box::from(err)))
+                    .ok();
             }
 
             puffin::GlobalProfiler::lock().new_frame();

@@ -92,34 +92,34 @@ impl HardwareInfo {
 
         let mut board_manufacturer = "Microsoft Corporation";
         let mut board_sn = "None";
-        if let Some(board_info) = board_data.get(0) {
+        if let Some(board_info) = board_data.first() {
             board_manufacturer = board_info.manufacturer.as_str();
             board_sn = board_info.serial_number.as_str();
         }
 
         let mut bios_manufacturer = "Microsoft Corporation";
         let mut bios_sn = "None";
-        if let Some(bios_info) = bios_data.get(0) {
+        if let Some(bios_info) = bios_data.first() {
             bios_manufacturer = bios_info.manufacturer.as_str();
             bios_sn = bios_info.serial_number.as_str();
         }
 
         let mut os_install_date = "1970-01-0100:00:00.000000000+0000";
         let mut os_sn = "None";
-        if let Some(os_info) = os_data.get(0) {
+        if let Some(os_info) = os_data.first() {
             os_install_date = os_info.install_date.as_str();
             os_sn = os_info.serial_number.as_str();
         }
 
         let mut disk_sn = "None";
-        if let Some(disk_info) = disk_data.get(0) {
+        if let Some(disk_info) = disk_data.first() {
             disk_sn = disk_info.serial_number.as_str();
         }
 
         let volume_sn = format!("{:08x}", get_c_drive_volume_serial());
 
         let mut gpu_pnp_id: Option<String> = None;
-        if let Some(gpu_info) = gpu_data.get(0) {
+        if let Some(gpu_info) = gpu_data.first() {
             let device_id = &gpu_info.pnp_device_id;
             let device_id =
                 device_id[..device_id.rfind('\\').unwrap_or(device_id.len())].to_string();
@@ -588,7 +588,7 @@ fn get_ea_mac_address() -> Option<String> {
 
     match mac {
         Some(address) => {
-            let mac = hex::encode(&address.bytes());
+            let mac = hex::encode(address.bytes());
             Some("$".to_owned() + &mac)
         }
         None => None,

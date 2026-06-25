@@ -3,7 +3,7 @@
 use crate::{core::manifest::ManifestError, util::native::platform_path};
 use derive_getters::Getters;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 macro_rules! predip_type {
     (
@@ -48,6 +48,35 @@ predip_type!(
     data {
         file_path: String,
         parameters: String,
+        update_parameters: String,
+        repair_parameters: String,
+    }
+);
+
+predip_type!(
+    Metadata;
+    attr {},
+    data {
+        feature_flags: Vec<String>,
+        os: String,
+        ignore: Vec<String>,
+        locale_info: Vec<PreDiPLocaleInfo>,
+        file_path: String,
+        parameters: String,
+        update_parameters: String,
+        repair_parameters: String,
+    }
+);
+
+predip_type!(
+    LocaleInfo;
+    attr {
+        locale: String,
+    },
+    data {
+        title: String,
+        eula: String,
+        exclude: Vec<String>,
     }
 );
 
@@ -66,11 +95,15 @@ fn remove_trailing_backslash(path: &str) -> &str {
 predip_type!(
     Manifest;
     attr {
-        gameVersion: String,
-        manifestVersion: String,
+        game_version: String,
+        manifest_version: String,
     },
     data {
+        content_ids: Vec<String>,
+        uninstall: String,
+        metadata: Vec<PreDiPMetadata>,
         executable: PreDiPExecutable,
+        install_manifest: String,
     }
 );
 
@@ -82,7 +115,6 @@ fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
 
     let u16_bytes: Vec<u16> = bytes
         .chunks_exact(2)
-        .into_iter()
         .map(|a| u16::from_ne_bytes([a[0], a[1]]))
         .collect();
 
@@ -102,11 +134,11 @@ impl PreDiPManifest {
     }
 
     pub fn version(&self) -> Option<String> {
-        Some(self.attr_gameVersion.clone())
+        Some(self.attr_game_version.clone())
     }
 
     #[cfg(unix)]
-    pub async fn run_touchup(&self, install_path: &PathBuf) -> Result<(), ManifestError> {
+    pub async fn run_touchup(&self, install_path: &Path) -> Result<(), ManifestError> {
         use crate::{
             core::launch::mx_linux_setup,
             unix::{
@@ -131,7 +163,7 @@ impl PreDiPManifest {
     }
 
     #[cfg(windows)]
-    pub async fn run_touchup(&self, install_path: &PathBuf) -> Result<(), ManifestError> {
+    pub async fn run_touchup(&self, install_path: &Path) -> Result<(), ManifestError> {
         use crate::util::native::NativeError;
         use tokio::process::Command;
 
@@ -151,7 +183,7 @@ impl PreDiPManifest {
         Ok(())
     }
 
-    fn collect_touchup_args(&self, install_path: &PathBuf) -> Result<Vec<PathBuf>, ManifestError> {
+    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<PathBuf>, ManifestError> {
         let mut args = Vec::new();
         for arg in self.executable.parameters.split(" ") {
             let arg = arg.replace("{locale}", "en_US").replace(

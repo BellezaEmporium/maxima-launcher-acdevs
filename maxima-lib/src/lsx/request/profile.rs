@@ -29,7 +29,7 @@ pub async fn handle_profile_request(
     let maxima = arc.lock().await;
 
     let user = maxima.local_user().await?;
-    let path = platform_path(maxima.avatar_image(&user.id(), 208, 208).await?);
+    let path = platform_path(maxima.avatar_image(user.id(), 208, 208).await?);
 
     let player = user
         .player()
@@ -38,7 +38,7 @@ pub async fn handle_profile_request(
     let name = player.unique_name();
     debug!("Got profile for {} {:?}", &name, path);
 
-    make_lsx_handler_response!(Response, GetProfileResponse, {
+    return make_lsx_handler_response!(Response, GetProfileResponse, {
        attr_Persona: name.to_owned(),
        attr_SubscriberLevel: 0,
        attr_CommerceCurrency: "USD".to_string(),
@@ -51,15 +51,15 @@ pub async fn handle_profile_request(
        attr_IsSteamSubscriber: false,
        attr_PersonaId: player.psd().parse::<u64>()?,
        attr_IsUnderAge: false,
-       attr_UserIndex: 0,
-    })
+         attr_UserIndex: 0,
+     });
 }
 
 pub async fn handle_presence_request(
     _: LockedConnectionState,
     _: LSXGetPresence,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
-    make_lsx_handler_response!(Response, GetPresenceResponse, {
+    return make_lsx_handler_response!(Response, GetPresenceResponse, {
        attr_UserId: 1005663144213,
        attr_Presence: LSXPresence::Ingame,
        attr_Title: None,
@@ -68,9 +68,9 @@ pub async fn handle_presence_request(
        attr_RichPresence: None,
        attr_GamePresence: None,
        attr_SessionId: None,
-       attr_Group: None,
-       attr_GroupId: None,
-    })
+         attr_Group: None,
+         attr_GroupId: None,
+     });
 }
 
 pub async fn handle_set_presence_request(
@@ -80,11 +80,9 @@ pub async fn handle_set_presence_request(
     info!(
         "Setting Presence to {:?}: {}",
         request.attr_Presence,
-        request
-            .attr_RichPresence
+        request.attr_RichPresence
             .to_owned()
-            .or(Some(String::new()))
-            .unwrap()
+            .unwrap_or(String::new())
     );
 
     let arc = state.write().await.maxima_arc();
@@ -110,7 +108,7 @@ pub async fn handle_set_presence_request(
             .await?;
     }
 
-    make_lsx_handler_response!(Response, ErrorSuccess, { attr_Code: 0, attr_Description: String::new() })
+    return make_lsx_handler_response!(Response, ErrorSuccess, { attr_Code: 0, attr_Description: String::new() });
 }
 
 pub async fn handle_query_presence_request(
@@ -152,7 +150,7 @@ pub async fn handle_query_presence_request(
         });
     }
 
-    make_lsx_handler_response!(Response, QueryPresenceResponse, { friend: friends })
+    return make_lsx_handler_response!(Response, QueryPresenceResponse, { friend: friends });
 }
 
 pub async fn handle_query_friends_request(
@@ -171,7 +169,7 @@ pub async fn handle_query_friends_request(
             continue;
         }
 
-        let mut presence = presence_store.get(ele.id()).unwrap_or_else(|| {
+        let presence = presence_store.get(ele.id()).unwrap_or_else(|| {
             RichPresenceBuilder::default()
                 .basic(BasicPresence::Offline)
                 .status(String::new())
@@ -215,7 +213,7 @@ pub async fn handle_query_friends_request(
         });
     }
 
-    make_lsx_handler_response!(Response, QueryFriendsResponse, { friend: lsx_friends })
+    return make_lsx_handler_response!(Response, QueryFriendsResponse, { friend: lsx_friends });
 }
 
 pub async fn handle_get_block_list_request(
@@ -251,7 +249,7 @@ pub async fn handle_get_block_list_request(
         });
     }
 
-    make_lsx_handler_response!(Response, GetBlockListResponse, { attr_Return: "Success".to_string(), User: list})
+    return make_lsx_handler_response!(Response, GetBlockListResponse, { attr_Return: "Success".to_string(), User: list});
 }
 
 pub async fn handle_query_image_request(
@@ -269,13 +267,12 @@ pub async fn handle_query_image_request(
             .await?,
     );
 
-    let mut images = Vec::new();
-    images.push(LSXImage {
+    let images = vec![LSXImage {
         attr_ImageId: request.attr_ImageId,
         attr_Width: request.attr_Width,
         attr_Height: request.attr_Height,
         attr_ResourcePath: path.safe_str()?.to_string(),
-    });
+    }];
 
-    make_lsx_handler_response!(Response, QueryImageResponse, { attr_Result: 1, image: images, })
+    return make_lsx_handler_response!(Response, QueryImageResponse, { attr_Result: 1, image: images, });
 }

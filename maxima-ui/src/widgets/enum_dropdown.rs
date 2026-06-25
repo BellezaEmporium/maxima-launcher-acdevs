@@ -1,4 +1,4 @@
-use egui::{Color32, CornerRadius, Rounding, Stroke};
+use egui::{Color32, CornerRadius, Stroke};
 
 use crate::enum_locale_map::EnumToString;
 use strum::IntoEnumIterator;

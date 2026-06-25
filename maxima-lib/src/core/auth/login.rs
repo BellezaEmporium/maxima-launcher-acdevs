@@ -45,7 +45,7 @@ pub async fn begin_oauth_login_flow<'a>(context: &mut AuthContext<'a>) -> Result
                 }
             }
 
-            return Err(AuthError::NoAuthCode.into());
+            return Err(AuthError::NoAuthCode);
         }
     }
 }

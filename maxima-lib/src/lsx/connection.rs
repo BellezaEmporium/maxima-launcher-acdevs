@@ -222,29 +222,27 @@ impl Connection {
 
         // The PID system is mainly for Kyber injection
         let mut pid = get_os_pid(context);
-        if cfg!(unix) {
-            if let Ok(os_pid) = pid {
-                let sys = System::new_all();
-                if let Some(process) = sys.process(Pid::from_u32(os_pid)) {
-                    let filename = PathBuf::from(
-                        process.cmd()[0]
-                            .to_string_lossy()
-                            .replace("Z:", "")
-                            .replace('\\', "/"),
-                    )
-                    .file_name()
-                    .ok_or(NativeError::FileName)?
-                    .to_str()
-                    .ok_or(NativeError::Stringify)?
-                    .to_owned();
+        if cfg!(unix) && let Ok(os_pid) = pid {
+            let sys = System::new_all();
+            if let Some(process) = sys.process(Pid::from_u32(os_pid)) {
+                let filename = PathBuf::from(
+                    process.cmd()[0]
+                        .to_string_lossy()
+                        .replace("Z:", "")
+                        .replace('\\', "/"),
+                )
+                .file_name()
+                .ok_or(NativeError::FileName)?
+                .to_str()
+                .ok_or(NativeError::Stringify)?
+                .to_owned();
 
-                    pid = get_wine_pid(&context.launch_id(), &filename).await;
-                } else {
-                    warn!(
-                        "Failed to find game process while looking for PID {}",
-                        os_pid
-                    );
-                }
+                pid = get_wine_pid(context.launch_id(), &filename).await;
+            } else {
+                warn!(
+                    "Failed to find game process while looking for PID {}",
+                    os_pid
+                );
             }
         }
 
@@ -295,7 +293,7 @@ impl Connection {
         let mut buffer = [0; 1024 * 8];
 
         let n = match self.stream.read(&mut buffer) {
-            Ok(n) if n == 0 => {
+            Ok(0) => {
                 return Err(LSXConnectionError::Closed);
             }
             Ok(n) => n,

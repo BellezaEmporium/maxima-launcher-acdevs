@@ -28,29 +28,33 @@ macro_rules! send_and_forget_rtm_request {
 }
 
 macro_rules! send_rtm_request {
-    ($connection_manager: expr, $request_body_name: ident, $comm_name: ident, $response_body_name: ident, $response_comm_name: ident, $comm_initializer:tt) => {
+    ($connection_manager:expr, $request_body_name:ident, $comm_name:ident, $response_body_name:ident, $response_comm_name:ident, $comm_initializer:tt) => {
         {
             fn _rtm_transform(
                 fut: impl Future<Output = Result<communication_v1::Body, RtmError>> + Send,
             ) -> impl Future<Output = Result<$response_comm_name, RtmError>> + Send {
                 async move {
                     match fut.await? {
-                        communication_v1::Body::Success(success) => match success.body {
-                            Some(body) => match body {
-                                success_v1::Body::$response_body_name(data) => Ok(data),
-                                any => Err(RtmError::InvalidResponse(any)),
-                            },
-                            None => Err(RtmError::NoBody),
+                        communication_v1::Body::Success(success) => {
+                            if let Some(body) = success.body {
+                                if matches!(body, success_v1::Body::$response_body_name(_)) {
+                                    let success_v1::Body::$response_body_name(data) = body;
+                                    Ok(data)
+                                } else {
+                                    Err(RtmError::InvalidResponse(body))
+                                }
+                            } else {
+                                Err(RtmError::NoBody)
+                            }
                         }
                         communication_v1::Body::Error(err) => Err(RtmError::V1(err)),
                         any => Err(RtmError::InvalidVariant(any)),
                     }
                 }
             }
-
             _rtm_transform($connection_manager.send_request(communication_v1::Body::$request_body_name($comm_name $comm_initializer)))
         }
-    }
+    };
 }
 
 #[derive(Serialize, Deserialize)]
@@ -144,17 +148,12 @@ impl RtmClient {
 
         let cloned_presence_store = client.presence_store.clone();
         tokio::spawn(async move {
-            loop {
-                match receiver_tx.recv().await {
-                    Some(body) => {
-                        if let Err(err) =
-                            RtmClient::process_update(body, cloned_presence_store.clone()).await
-                        {
-                            error!("Failed to process update: {}", err);
-                        }
-                    }
-                    None => break,
-                };
+            while let Some(body) = receiver_tx.recv().await {
+                if let Err(err) =
+                    RtmClient::process_update(body, cloned_presence_store.clone()).await
+                {
+                    error!("Failed to process update: {}", err);
+                }
             }
         });
 
@@ -289,7 +288,7 @@ impl RtmClient {
     }
 
     /// Subscribe to a list of user IDs' presences
-    pub async fn subscribe(&mut self, players: &Vec<String>) -> Result<(), RtmError> {
+    pub async fn subscribe(&mut self, players: &[String]) -> Result<(), RtmError> {
         send_and_forget_rtm_request!(self.conn_man, PresenceSubscribe, PresenceSubscribeV1, {
             players: players.iter().map(|id| Player{ player_id: id.to_owned(), product_id: String::from("origin"), }).collect()
         })

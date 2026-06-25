@@ -20,7 +20,7 @@ use crate::{
     content::{
         ContentService,
         downloader::{DownloadError, ZipDownloader},
-        zip::{self, CompressionType, ZipError, ZipFileEntry},
+        zip::{CompressionType, ZipError, ZipFileEntry},
     },
     core::{
         MaximaEvent,
@@ -146,7 +146,7 @@ impl GameDownloader {
 
         debug!("URL: {}", url.url());
 
-        let downloader = ZipDownloader::new(&game.offer_id, &url.url(), &game.path).await?;
+        let downloader = ZipDownloader::new(&game.offer_id, url.url(), &game.path).await?;
 
         let mut entries = Vec::new();
         for ele in downloader.manifest().entries() {
@@ -222,9 +222,9 @@ impl GameDownloader {
     ) -> Result<(), DownloaderError> {
         let mut handles = Vec::with_capacity(total_count);
 
-        for i in 0..total_count {
+        for ele in entries.iter().take(total_count) {
             let downloader = downloader_arc.clone();
-            let ele = entries[i].clone();
+            let ele = ele.clone();
 
             let cancel_token = cancel_token.clone();
             let completed_bytes = completed_bytes.clone();
@@ -316,7 +316,7 @@ impl ContentManager {
     }
 
     pub async fn add_install(&mut self, game: QueuedGame) -> Result<(), ContentManagerError> {
-        if self.queue.queued.is_empty() && self.queue.current == None && self.current.is_none() {
+        if self.queue.queued.is_empty() && self.queue.current.is_none() && self.current.is_none() {
             self.install_now(game).await?;
         } else {
             self.queue.queued.push(game);
@@ -362,18 +362,16 @@ impl ContentManager {
     pub(crate) async fn update(&mut self) -> Result<Option<MaximaEvent>, ContentManagerError> {
         let mut event = None;
 
-        if let Some(current) = &self.current {
-            if current.is_done() {
-                event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
-                self.current = None;
-                self.queue.current = None;
+        if let Some(current) = &self.current && current.is_done() {
+            event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
+            self.current = None;
+            self.queue.current = None;
 
-                if let Some(game) = self.queue.queued.pop() {
-                    self.install_now(game).await?;
-                }
-
-                self.queue.save().await?;
+            if let Some(game) = self.queue.queued.pop() {
+                self.install_now(game).await?;
             }
+
+            self.queue.save().await?;
         }
 
         Ok(event)

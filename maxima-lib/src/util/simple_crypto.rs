@@ -24,7 +24,7 @@ pub fn simple_decrypt(data: &[u8], key: &[u8; 16]) -> String {
 }
 
 pub fn simple_encrypt(data: &[u8], key: &[u8; 16]) -> String {
-    let res = Aes128EcbEnc::new(&(*key).into()).encrypt_padded_vec::<Pkcs7>(&data);
+    let res = Aes128EcbEnc::new(&(*key).into()).encrypt_padded_vec::<Pkcs7>(data);
     hex::encode(res)
 }
 
@@ -47,8 +47,8 @@ pub fn make_lsx_key(seed: u16) -> [u8; 16] {
     crand.seed(seed);
 
     let mut result: [u8; 16] = [0; 16];
-    for i in 0..16 {
-        result[i] = crand.rand() as u8;
+    for item in &mut result {
+        *item = crand.rand() as u8;
     }
     result
 }
@@ -86,7 +86,7 @@ fn get_array(s: &str) -> Vec<u8> {
     for i in 0..(sb.len() / 2) {
         let byte_str = &s[(i * 2)..((i * 2) + 2)];
         let byte = u8::from_str_radix(byte_str, 16).expect("Failed to parse byte from string");
-        m.write(&[byte]).expect("Failed to write byte to stream");
+        m.write_all(&[byte]).expect("Failed to write byte to stream");
     }
     m.into_inner()
 }

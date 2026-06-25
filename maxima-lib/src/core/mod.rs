@@ -294,7 +294,7 @@ impl Maxima {
         let friends: Vec<ServicePlayer> = friends
             .friends()
             .items()
-            .into_iter()
+            .iter()
             .map(|x| x.player().clone())
             .collect();
 
@@ -313,8 +313,8 @@ impl Maxima {
     }
 
     pub async fn player_by_id(&self, id: &str) -> Result<ServicePlayer, ServiceLayerError> {
-        if let Some(user) = &self.dummy_local_user {
-            return Ok(user
+        if let Some(dummy) = &self.dummy_local_user {
+            return Ok(dummy
                 .player()
                 .as_ref()
                 .ok_or(ServiceLayerError::MissingField)?
@@ -340,9 +340,9 @@ impl Maxima {
         let avatars = data.avatar();
 
         let avatars = avatars.as_ref().ok_or(ServiceLayerError::MissingField)?;
-        let _ = self.cache_avatar_image(&id, avatars.large()).await;
-        let _ = self.cache_avatar_image(&id, avatars.medium()).await;
-        let _ = self.cache_avatar_image(&id, avatars.small()).await;
+        let _ = self.cache_avatar_image(id, avatars.large()).await;
+        let _ = self.cache_avatar_image(id, avatars.medium()).await;
+        let _ = self.cache_avatar_image(id, avatars.small()).await;
 
         self.request_cache.insert(cache_key, data.clone());
         Ok(data)
@@ -383,7 +383,7 @@ impl Maxima {
             self.player_by_id(id).await?;
         }
 
-        if let Some(_) = &self.dummy_local_user {
+        if self.dummy_local_user.is_some() {
             return Ok(path);
         }
 
@@ -431,10 +431,7 @@ impl Maxima {
     }
 
     pub fn set_player_started(&mut self) {
-        match &mut self.playing {
-            Some(playing) => playing.set_started(),
-            None => return,
-        }
+        if let Some(playing) = &mut self.playing { playing.set_started() }
     }
 
     /// Call this as often as possible from the loop you consume events from
@@ -458,29 +455,24 @@ impl Maxima {
         }
 
         let playing = self.playing.as_mut().unwrap();
-        match playing.process_mut().try_wait() {
-            Ok(None) => return,
-            _ => (),
-        }
+        if let Ok(None) = playing.process_mut().try_wait() { return }
 
         info!("Game stopped");
 
-        if let Some(offer) = playing.offer() {
-            if *playing.cloud_saves() && offer.offer().has_cloud_save() {
-                let result = self
-                    .cloud_sync
-                    .obtain_lock(offer, CloudSyncLockMode::Write)
-                    .await;
-                match result {
-                    Err(err) => error!("Failed to obtain CloudSync write lock: {}", err),
-                    Ok(lock) => {
-                        let result = lock.sync_files().await;
-                        if let Err(err) = result {
-                            error!("Failed to write to CloudSync: {}", err);
-                        }
-
-                        lock.release().await.ok();
+        if let Some(offer) = playing.offer() && *playing.cloud_saves() && offer.offer().has_cloud_save() {
+            let result = self
+                .cloud_sync
+                .obtain_lock(offer, CloudSyncLockMode::Write)
+                .await;
+            match result {
+                Err(err) => error!("Failed to obtain CloudSync write lock: {}", err),
+                Ok(lock) => {
+                    let result = lock.sync_files().await;
+                    if let Err(err) = result {
+                        error!("Failed to write to CloudSync: {}", err);
                     }
+
+                    lock.release().await.ok();
                 }
             }
         }

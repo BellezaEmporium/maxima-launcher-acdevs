@@ -50,7 +50,7 @@ pub async fn request_offer_data(
     locale: &str,
 ) -> Result<CommerceOffer, ECommerceError> {
     let res = Client::new()
-        .get(&format!("{}/public/{}/{}", API_ECOMMERCE, offer, locale))
+        .get(format!("{}/public/{}/{}", API_ECOMMERCE, offer, locale))
         .header("AuthToken", access_token)
         .send()
         .await?;

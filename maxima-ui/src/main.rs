@@ -11,7 +11,7 @@ use log::error;
 use maxima::{core::library::OwnedOffer, util::log::init_logger};
 use std::{collections::HashMap, ops::RangeInclusive, path::PathBuf, sync::Arc};
 use strum_macros::EnumIter;
-use ui_image::{UIImageCache, UIImageType};
+use crate::ui_image::{UIImageCache, UIImageType};
 use views::{
     debug_view::debug_view,
     downloads_view::{QueuedDownload, downloads_view},
@@ -27,11 +27,10 @@ use eframe::egui_glow;
 use egui_extras::{Size, StripBuilder};
 use egui_glow::glow;
 
-use app_bg_renderer::AppBgRenderer;
-use bridge_thread::{BackendError, BridgeThread, InteractThreadLocateGameResponse};
-use game_view_bg_renderer::GameViewBgRenderer;
-use renderers::{app_bg_renderer, game_view_bg_renderer};
-use translation_manager::{TranslationManager, positional_replace};
+use crate::renderers::app_bg_renderer::AppBgRenderer;
+use crate::bridge_thread::{BackendError, BridgeThread, InteractThreadLocateGameResponse};
+use crate::renderers::game_view_bg_renderer::GameViewBgRenderer;
+use crate::translation_manager::{TranslationManager, positional_replace};
 
 pub mod bridge;
 pub mod util;
@@ -311,6 +310,8 @@ pub struct MaximaEguiApp {
     installer_state: InstallModalState,
     /// User Settings for the frontend
     settings: FrontendSettings,
+    /// Map of offer IDs to slugs for quick lookup
+    pub offer_to_slug: HashMap<String, String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, PartialEq, EnumIter)]
@@ -489,6 +490,7 @@ impl MaximaEguiApp {
             install_queue: HashMap::new(),
             installer_state: InstallModalState::new(&settings),
             settings,
+            offer_to_slug: HashMap::new(),
         }
     }
 }
@@ -906,7 +908,9 @@ impl MaximaEguiApp {
                                         ui.add_enabled_ui(PathBuf::from(&self.installer_state.locate_path).exists(), |ui| {
 
                                             if ui.add_sized(button_size, egui::Button::new(&self.locale.localization.modals.game_install.locate_action.to_ascii_uppercase())).clicked() {
-                                                self.backend.backend_commander.send(bridge_thread::MaximaLibRequest::LocateGameRequest(self.installer_state.locate_path.clone())).unwrap();
+                                                let _ = self.backend.backend_commander.send(
+                                                    bridge_thread::MaximaLibRequest::LocateGameRequest(self.installer_state.locate_path.clone()),
+                                                );
                                                 self.installer_state.locating = true;
                                             }
                                         });
@@ -931,7 +935,9 @@ impl MaximaEguiApp {
                                             } else {
                                                 self.install_queue.insert(game.offer.clone(),QueuedDownload { slug: game.slug.clone(), offer: game.offer.clone(), downloaded_bytes: 0, total_bytes: 0 });
                                             }
-                                            self.backend.backend_commander.send(bridge_thread::MaximaLibRequest::InstallGameRequest(game.offer.clone(), path.join(slug))).unwrap();
+                                            let _ = self.backend.backend_commander.send(
+                                                bridge_thread::MaximaLibRequest::InstallGameRequest(game.offer.clone(), path.join(slug)),
+                                            );
 
                                             clear = true;
                                         }
@@ -986,10 +992,7 @@ impl MaximaEguiApp {
                                             None
                                         };
                                         let _ = self.backend.backend_commander.send(
-                                            crate::bridge_thread::MaximaLibRequest::StartGameRequest(
-                                                game.clone(),
-                                                settings,
-                                            ),
+                                            crate::bridge_thread::MaximaLibRequest::StartGameRequest(game.clone(), settings),
                                         );
                                         clear = true
                                     }
@@ -1029,10 +1032,9 @@ impl MaximaEguiApp {
             )
             .clicked()
         {
-            self.backend
-                .backend_commander
-                .send(bridge_thread::MaximaLibRequest::LoginRequestOauth)
-                .unwrap();
+            let _ = self.backend.backend_commander.send(
+                bridge_thread::MaximaLibRequest::LoginRequestOauth,
+            );
             self.backend_state = BackendStallState::LoggingIn;
         }
     }
@@ -1149,10 +1151,9 @@ impl MaximaEguiApp {
                     )
                     .clicked()
                 {
-                    self.backend
-                        .backend_commander
-                        .send(bridge_thread::MaximaLibRequest::StartService)
-                        .unwrap();
+                    self.backend.backend_commander.send(
+                        bridge_thread::MaximaLibRequest::StartService,
+                    ).unwrap_or(());
                     self.backend_state = BackendStallState::Starting;
                 }
             }
@@ -1182,10 +1183,9 @@ impl eframe::App for MaximaEguiApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&glow::Context>) {
-        self.backend
+        let _ = self.backend
             .backend_commander
-            .send(bridge_thread::MaximaLibRequest::ShutdownRequest)
-            .unwrap();
+            .send(bridge_thread::MaximaLibRequest::ShutdownRequest);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {

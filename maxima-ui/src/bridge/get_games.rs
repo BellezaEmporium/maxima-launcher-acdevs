@@ -16,7 +16,7 @@ use maxima::{
     },
     util::native::maxima_dir,
 };
-use std::{fs, sync::mpsc::Sender};
+use tokio::sync::mpsc::UnboundedSender;
 
 fn get_preferred_bg_hero(heroes: &Option<ServiceGameHubCollection>) -> Option<String> {
     let heroes = match heroes {
@@ -103,7 +103,7 @@ async fn handle_images(
     has_hero: bool,
     has_logo: bool,
     has_background: bool,
-    channel: Sender<UIImageCacheLoaderCommand>,
+    channel: UnboundedSender<UIImageCacheLoaderCommand>,
     service_layer: ServiceLayerClient,
 ) -> Result<(), BackendError> {
     debug!("handling image downloads for {}", &slug);
@@ -147,7 +147,7 @@ async fn handle_images(
             channel.send(UIImageCacheLoaderCommand::ProvideRemote(
                 crate::ui_image::UIImageType::Hero(slug.clone()),
                 hero,
-            ))?
+            )).ok();
         }
     }
 
@@ -156,11 +156,11 @@ async fn handle_images(
             channel.send(UIImageCacheLoaderCommand::ProvideRemote(
                 crate::ui_image::UIImageType::Logo(slug.clone()),
                 logo,
-            ))?
+            )).ok();
         } else {
             channel.send(UIImageCacheLoaderCommand::Stub(
                 crate::ui_image::UIImageType::Logo(slug.clone()),
-            ))?
+            )).ok();
         }
     }
 
@@ -177,7 +177,7 @@ async fn handle_images(
             channel.send(UIImageCacheLoaderCommand::ProvideRemote(
                 crate::ui_image::UIImageType::Background(slug),
                 background_image,
-            ))?
+            )).ok();
         }
     }
 
@@ -186,20 +186,23 @@ async fn handle_images(
 
 pub async fn get_games_request(
     maxima_arc: LockedMaxima,
-    channel: Sender<MaximaLibResponse>,
-    channel1: Sender<UIImageCacheLoaderCommand>,
+    channel: UnboundedSender<MaximaLibResponse>,
+    channel1: UnboundedSender<UIImageCacheLoaderCommand>,
     ctx: &Context,
 ) -> Result<(), BackendError> {
     debug!("received request to load games");
-    let mut maxima = maxima_arc.lock().await;
-    let service_layer = maxima.service_layer().clone();
-    let locale = maxima.locale().short_str().to_owned();
-    let logged_in = maxima.auth_storage().lock().await.current().is_some();
-    if !logged_in {
-        return Err(BackendError::LoggedOut);
-    }
 
-    let owned_games = maxima.mut_library().games().await?;
+    let (service_layer, locale, owned_games) = {
+        let mut maxima = maxima_arc.lock().await;
+        let service_layer = maxima.service_layer().clone();
+        let locale = maxima.locale().short_str().to_owned();
+        let logged_in = maxima.auth_storage().lock().await.current().is_some();
+        if !logged_in {
+            return Err(BackendError::LoggedOut);
+        }
+        let owned_games = maxima.mut_library().games().await?.clone();
+        (service_layer, locale, owned_games)
+    };
 
     for game in owned_games {
         let slug = game.base_offer().slug().clone();
@@ -212,10 +215,7 @@ pub async fn get_games_request(
             match downloads.iter().find(|item| item.download_type() == "LIVE") {
                 Some(item) => item,
                 None => {
-                    error!(
-                        "Cannot find LIVE download for game with multiple downloads: {}",
-                        &slug
-                    );
+                    error!("Cannot find LIVE download for game with multiple downloads: {}", &slug);
                     continue;
                 }
             }
@@ -241,25 +241,28 @@ pub async fn get_games_request(
             installed: game.base_offer().is_installed().await,
             has_cloud_saves: game.base_offer().offer().has_cloud_save(),
         };
+
         let slug = game_info.slug.clone();
         let settings = crate::GameSettings {
-            //TODO: eventually support cloud saves, the option is here for that but for now, keep it disabled in ui!
             cloud_saves: true,
             launch_args: String::new(),
             exe_override: String::new(),
         };
-        let res = MaximaLibResponse::GameInfoResponse(InteractThreadGameListResponse {
+
+        channel.send(MaximaLibResponse::GameInfoResponse(InteractThreadGameListResponse {
             game: game_info,
             settings,
-        });
-        channel.send(res)?;
+        })).ok();
 
         let bg = maxima_dir()?.join("cache/ui/images/").join(&slug).join("background.jpg");
         let game_hero = maxima_dir()?.join("cache/ui/images/").join(&slug).join("hero.jpg");
         let game_logo = maxima_dir()?.join("cache/ui/images/").join(&slug).join("logo.png");
-        let has_hero = fs::metadata(&game_hero).is_ok();
-        let has_logo = fs::metadata(&game_logo).is_ok();
-        let has_background = fs::metadata(&bg).is_ok();
+
+        let (has_hero, has_logo, has_background) = tokio::join!(
+            async { tokio::fs::metadata(&game_hero).await.is_ok() },
+            async { tokio::fs::metadata(&game_logo).await.is_ok() },
+            async { tokio::fs::metadata(&bg).await.is_ok() },
+        );
 
         if !has_hero || !has_logo || !has_background {
             //we're like 20 tasks deep i swear but this shit's gonna be real fast, trust
@@ -268,7 +271,7 @@ pub async fn get_games_request(
             let channel_send = channel1.clone();
             let service_layer_send = service_layer.clone();
             tokio::task::spawn(async move {
-                handle_images(
+                let _ = handle_images(
                     slug_send,
                     locale_send,
                     has_hero,
@@ -276,10 +279,9 @@ pub async fn get_games_request(
                     has_background,
                     channel_send,
                     service_layer_send,
-                )
-                .await
+                ).await;
             });
-            tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
         }
 
         egui::Context::request_repaint(&ctx);

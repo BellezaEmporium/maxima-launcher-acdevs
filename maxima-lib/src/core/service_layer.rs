@@ -5,6 +5,7 @@ use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2_const;
+use std::fmt;
 use thiserror::Error;
 
 use derive_builder::Builder;
@@ -98,9 +99,9 @@ pub struct ServiceLayerGraphQLRequest {
 macro_rules! load_graphql_request {
     ($type:ident, $operation:expr, $key:expr) => {{
         let content = include_str!(concat!("graphql/", $operation, ".gql"));
-        let hash = sha2_const::Sha256::new();
-        hash.update(content.as_bytes());
-        let hash = hash.finalize();
+        let hash = sha2_const::Sha256::new()
+        .update(content.as_bytes())
+        .finalize();
         ServiceLayerGraphQLRequest {
             query: content,
             operation: $operation,
@@ -250,11 +251,7 @@ impl ServiceLayerClient {
 
             return Err(ServiceLayerError::GraphQL {
                 operation: operation.operation.to_string(),
-                error: if let Some(error) = error.get("message") {
-                    Some(error.to_string())
-                } else {
-                    None
-                },
+                error: error.get("message").map(|error| error.to_string())
             });
         }
 
@@ -507,12 +504,12 @@ service_layer_enum!(DownloadType, {
     None,
 });
 
-impl ServiceDownloadType {
-    pub fn to_string(&self) -> String {
+impl fmt::Display for ServiceDownloadType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ServiceDownloadType::Staged => "Staged".to_owned(),
-            ServiceDownloadType::Live => "Live".to_owned(),
-            ServiceDownloadType::None => "None".to_owned(),
+            ServiceDownloadType::Staged => write!(f, "Staged"),
+            ServiceDownloadType::Live => write!(f, "Live"),
+            ServiceDownloadType::None => write!(f, "None"),
         }
     }
 }
@@ -526,18 +523,25 @@ service_layer_type!(AvailableBuild, {
 });
 
 impl ServiceAvailableBuild {
-    pub fn to_string(&self) -> String {
-        let mut str = self.game_version.to_owned().unwrap_or("UnkVer".to_owned());
+}
+
+impl fmt::Display for ServiceAvailableBuild {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.game_version.as_deref().unwrap_or("UnkVer")
+        )?;
 
         if let Some(download_type) = &self.download_type {
-            str += &("/".to_owned() + &*download_type.to_string());
+            write!(f, "/{download_type}")?;
         }
 
         if let Some(build_live_date) = &self.build_live_date {
-            str += &(" - ".to_owned() + build_live_date);
+            write!(f, " - {build_live_date}")?;
         }
 
-        str
+        Ok(())
     }
 }
 

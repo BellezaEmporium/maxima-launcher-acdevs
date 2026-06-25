@@ -25,15 +25,15 @@ pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServ
     let mut connections: Vec<Connection> = Vec::new();
 
     loop {
-        let mut idx = 0 as usize;
+        let mut idx = 0_usize;
         while idx < connections.len() {
             let connection = &mut connections[idx];
 
-            if let Err(_) = connection.process_queue().await {
+            if connection.process_queue().await.is_err() {
                 warn!("Failed to process LSX message queue");
             }
 
-            if let Err(_) = connection.listen().await {
+            if connection.listen().await.is_err() {
                 warn!("LSX connection closed");
                 connections.remove(idx);
                 maxima
@@ -43,7 +43,7 @@ pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServ
                 continue;
             }
 
-            idx = idx + 1;
+            idx += 1;
         }
 
         let (socket, addr) = match listener.accept() {
@@ -61,12 +61,12 @@ pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServ
         info!("New LSX connection: {:?}", addr);
 
         let conn = Connection::new(maxima.clone(), socket).await;
-        if let Err(err) = conn {
-            warn!("Failed to establish LSX connection: {}", err);
+        if conn.is_err() {
+            warn!("Failed to establish LSX connection: {}", conn.err().unwrap());
             continue;
         }
 
-        let mut conn = conn?;
+        let mut conn = conn.unwrap();
         conn.send_challenge().await?;
         connections.push(conn);
 

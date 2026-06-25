@@ -1,5 +1,5 @@
 use egui::Context;
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     GameDetails,
@@ -17,7 +17,7 @@ use maxima::core::{
 pub async fn game_details_request(
     maxima_arc: LockedMaxima,
     slug: String,
-    channel: Sender<MaximaLibResponse>,
+    channel: UnboundedSender<MaximaLibResponse>,
     ctx: &Context,
 ) -> Result<(), BackendError> {
     let maxima = maxima_arc.lock().await;
@@ -31,8 +31,6 @@ pub async fn game_details_request(
             .unwrap(),
     );
     let rq: ServiceGameSystemRequirements = rq.await?;
-
-    //TODO: parse async
 
     let (min, rec) = if rq.system_requirements().len() >= 1 {
         (
@@ -54,7 +52,7 @@ pub async fn game_details_request(
             system_requirements_rec: rec,
         },
     });
-    let _ = channel.send(res);
+    channel.send(res).ok();
     egui::Context::request_repaint(&ctx);
     Ok(())
 }

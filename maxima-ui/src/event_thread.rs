@@ -1,8 +1,8 @@
 use egui::Context;
-use std::sync::mpsc::{Receiver, Sender};
+use tokio::{sync::mpsc::{UnboundedSender, UnboundedReceiver}, time::Duration};
 
 use crate::bridge_thread::BackendError;
-use log::info;
+use log::{error, info};
 use maxima::core::{
     LockedMaxima,
     service_layer::{
@@ -31,17 +31,15 @@ impl EventThread {
     pub fn new(
         ctx: &Context,
         maxima: LockedMaxima,
-        rtm_cmd_listener: Receiver<MaximaEventRequest>,
-        rtm_responder: Sender<MaximaEventResponse>,
+        rtm_cmd_listener: UnboundedReceiver<MaximaEventRequest>,
+        rtm_responder: UnboundedSender<MaximaEventResponse>,
     ) -> Self {
         let context = ctx.clone();
 
         tokio::task::spawn(async move {
-            let result = EventThread::run(rtm_cmd_listener, rtm_responder, &context, maxima).await;
-            if result.is_err() {
-                panic!("Event thread failed! {}", result.err().unwrap());
-            } else {
-                info!("Event thread shut down")
+            match EventThread::run(rtm_cmd_listener, rtm_responder, &context, maxima).await {
+                Ok(()) => info!("Event thread shut down cleanly"),
+                Err(e) => error!("Event thread error: {e}"),
             }
         });
 
@@ -49,8 +47,8 @@ impl EventThread {
     }
 
     async fn run(
-        rtm_cmd_listener: Receiver<MaximaEventRequest>,
-        rtm_responder: Sender<MaximaEventResponse>,
+        mut rtm_cmd_listener: UnboundedReceiver<MaximaEventRequest>,
+        rtm_responder: UnboundedSender<MaximaEventResponse>,
         ctx: &Context,
         maxima_arc: LockedMaxima,
     ) -> Result<(), BackendError> {
@@ -79,38 +77,47 @@ impl EventThread {
         rtm.subscribe(&players).await?;
         drop(maxima);
 
-        'outer: loop {
-            let mut maxima = maxima_arc.lock().await;
-            maxima.rtm().heartbeat().await?;
+        let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
+        heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            {
-                let store = maxima.rtm().presence_store().lock().await;
-                for entry in store.iter() {
-                    let _ = rtm_responder.send(MaximaEventResponse::FriendStatusResponse(
-                        EventThreadFriendStatusResponse {
-                            id: entry.0.to_string(),
-                            presence: entry.1,
-                        },
-                    ));
-                    // This can cause excessive repainting if it keeps updating friends we know about
-                    egui::Context::request_repaint(&ctx);
+        // Presence polling interval — separate from heartbeat
+        let mut presence_interval = tokio::time::interval(Duration::from_millis(500));
+        presence_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tokio::select! {
+                _ = heartbeat_interval.tick() => {
+                    let mut maxima = maxima_arc.lock().await;
+                    if let Err(e) = maxima.rtm().heartbeat().await {
+                        error!("RTM heartbeat failed: {e}");
+                    }
+                }
+
+                _ = presence_interval.tick() => {
+                    let mut maxima = maxima_arc.lock().await;
+                    let store = maxima.rtm().presence_store().lock().await;
+                    for entry in store.iter() {
+                        let _ = rtm_responder
+                            .send(MaximaEventResponse::FriendStatusResponse(
+                                EventThreadFriendStatusResponse {
+                                    id: entry.0.to_string(),
+                                    presence: entry.1,
+                                },
+                            ))
+                            .ok();
+                    }
+                    if store.entry_count() > 0 {
+                        ctx.request_repaint();
+                    }
+                }
+
+                request = rtm_cmd_listener.recv() => {
+                    match request {
+                        Some(MaximaEventRequest::ShutdownRequest) | None => return Ok(()),
+                        Some(MaximaEventRequest::SubscribeToFriendPresence) => {}
+                    }
                 }
             }
-
-            drop(maxima);
-
-            let request = rtm_cmd_listener.try_recv();
-            if request.is_err() {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                continue;
-            }
-
-            match request? {
-                MaximaEventRequest::SubscribeToFriendPresence => {}
-                MaximaEventRequest::ShutdownRequest => break 'outer Ok(()),
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
     }
 }

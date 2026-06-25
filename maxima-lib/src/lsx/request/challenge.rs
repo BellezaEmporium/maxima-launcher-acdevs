@@ -14,7 +14,7 @@ pub async fn handle_challenge_response(
     state: LockedConnectionState,
     message: LSXChallengeResponse,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
-    let valid = check_challenge_response(&message.attr_response, &state.read().await.challenge());
+    let valid = check_challenge_response(&message.attr_response, state.read().await.challenge());
     if !valid {
         return Err(LSXRequestError::InvalidChallengeResponse);
     }
@@ -40,5 +40,5 @@ pub async fn handle_challenge_response(
         hex::encode(encryption_key),
         message.attr_version
     );
-    make_lsx_handler_response!(Response, ChallengeAccepted, { attr_response: accept_key })
+    return make_lsx_handler_response!(Response, ChallengeAccepted, { attr_response: accept_key })
 }

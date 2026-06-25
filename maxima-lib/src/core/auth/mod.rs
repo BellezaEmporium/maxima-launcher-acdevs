@@ -104,8 +104,8 @@ pub async fn nucleus_token_exchange(
 
     let query = vec![
         ("grant_type", "authorization_code"),
-        ("code", &auth_context.code().ok_or(TokenError::Absent)?),
-        ("code_verifier", &auth_context.code_verifier()),
+        ("code", auth_context.code().ok_or(TokenError::Absent)?),
+        ("code_verifier", auth_context.code_verifier()),
         ("client_id", JUNO_PC_CLIENT_ID),
         ("client_secret", JUNO_PC_CLIENT_SECRET),
         ("redirect_uri", "qrc:///html/login_successful.html"),

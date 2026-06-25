@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     error::Error,
-    io::{self, ErrorKind},
+    io::{self},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -140,10 +140,8 @@ impl RtmConnectionManager {
                                     pending_responses.remove(id)
                                 {
                                     tx.send(msg).unwrap();
-                                } else if id.is_empty() {
-                                    if let Some(body) = &msg.v1.as_ref().ok_or(RtmError::NoBody)?.body {
-                                        update_presence_tx.send(body.clone()).await?;
-                                    }
+                                } else if id.is_empty() && let Some(body) = &msg.v1.as_ref().ok_or(RtmError::NoBody)?.body {
+                                    update_presence_tx.send(body.clone()).await?;
                                 }
 
                                 bytes.advance(expected_size as usize);
@@ -204,8 +202,7 @@ impl RtmConnectionManager {
                 .ok_or(RtmError::NoBody)?
                 .body
                 .ok_or(RtmError::NoBody)?),
-            Err(_) => Err(RtmError::Io(io::Error::new(
-                ErrorKind::Other,
+            Err(_) => Err(RtmError::Io(io::Error::other(
                 "Failed to receive response",
             ))),
         }

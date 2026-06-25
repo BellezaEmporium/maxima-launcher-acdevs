@@ -46,8 +46,8 @@ pub async fn handle_query_entitlements_request(
         lsx_entitlements.push(LSXEntitlement {
             attr_LastModifiedDate: "0000-00-00T00:00:00".to_string(), // it's like this in EAD too
             attr_EntitlementId: entitlement.id().parse::<u64>()?,
-            attr_UseCount: entitlement.use_count().clone(),
-            attr_Version: entitlement.version().clone(),
+            attr_UseCount: *entitlement.use_count(),
+            attr_Version: *entitlement.version(),
             attr_ItemId: entitlement.product_id().clone(),
             attr_ResourceId: String::new(),
             attr_GrantDate: entitlement.grant_date().to_string(),
@@ -62,5 +62,5 @@ pub async fn handle_query_entitlements_request(
         });
     }
 
-    make_lsx_handler_response!(Response, QueryEntitlementsResponse, { entitlement: lsx_entitlements })
+    return make_lsx_handler_response!(Response, QueryEntitlementsResponse, { entitlement: lsx_entitlements })
 }

@@ -7,14 +7,14 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        mpsc::{Receiver, Sender},
     },
 };
 use tokio::{fs::File, io};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender, error::TryRecvError};
 
 use log::{debug, error, info};
 
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 use maxima::util::native::{NativeError, SafeStr, maxima_dir};
 
 #[derive(Clone, PartialEq, Eq, Hash, std::fmt::Debug)]
@@ -42,7 +42,7 @@ impl Display for UIImageType {
 
 pub struct UIImageCache {
     cache: Arc<Mutex<HashMap<UIImageType, Option<TextureHandle>>>>, // none represents loading, lack of represents untouched
-    commander: Sender<UIImageCacheLoaderCommand>,
+    commander: UnboundedSender<UIImageCacheLoaderCommand>,
     pub placeholder_avatar: TextureHandle,
 }
 
@@ -77,9 +77,9 @@ pub enum ImageLoadError {
 }
 
 impl UIImageCache {
-    pub fn new(ctx: egui::Context) -> (Self, Sender<UIImageCacheLoaderCommand>) {
+    pub fn new(ctx: egui::Context) -> (Self, UnboundedSender<UIImageCacheLoaderCommand>) {
         let cache = Arc::new(Mutex::new(HashMap::new()));
-        let (tx, rx) = std::sync::mpsc::channel::<UIImageCacheLoaderCommand>();
+        let (tx, rx) = unbounded_channel::<UIImageCacheLoaderCommand>();
         let tx1 = tx.clone();
 
         let yeah = load_image_bytes(include_bytes!("../res/usericon_tmp.png")).unwrap();
@@ -201,17 +201,18 @@ impl UIImageCache {
 
     async fn run(
         context: egui::Context,
-        commander: Receiver<UIImageCacheLoaderCommand>,
+        mut commander: UnboundedReceiver<UIImageCacheLoaderCommand>,
         cache: Arc<Mutex<HashMap<UIImageType, Option<TextureHandle>>>>,
     ) {
         let mut remotes: HashMap<UIImageType, String> = HashMap::new();
 
         'outer: loop {
             match commander.try_recv() {
-                Err(error) => {
-                    if error == std::sync::mpsc::TryRecvError::Disconnected {
-                        break 'outer;
-                    }
+                Err(TryRecvError::Disconnected) => {
+                    break 'outer;
+                }
+                Err(TryRecvError::Empty) => {
+                    tokio::task::yield_now().await;
                 }
                 Ok(request) => match request {
                     UIImageCacheLoaderCommand::ProvideRemote(needle, target) => {

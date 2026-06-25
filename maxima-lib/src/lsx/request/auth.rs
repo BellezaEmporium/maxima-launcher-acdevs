@@ -35,5 +35,5 @@ pub async fn handle_auth_code_request(
         }
     };
 
-    make_lsx_handler_response!(Response, AuthCode, { attr_value: auth_code })
+    return make_lsx_handler_response!(Response, AuthCode, { attr_value: auth_code })
 }

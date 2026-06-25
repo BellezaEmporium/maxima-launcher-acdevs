@@ -57,5 +57,5 @@ pub async fn handle_config_request(
         services.push(service.clone());
     }
 
-    make_lsx_handler_response!(Response, GetConfigResponse, { service: services })
+    return make_lsx_handler_response!(Response, GetConfigResponse, { service: services })
 }

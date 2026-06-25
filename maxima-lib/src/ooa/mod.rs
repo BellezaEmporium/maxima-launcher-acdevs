@@ -145,18 +145,18 @@ pub async fn detect_ooa_version(game_path: PathBuf) -> Result<u32, LicenseError>
 
     if major >= 5 {
         // >=5.0.0
-        return Ok(4);
+        Ok(4)
     } else if major == 4 && (minor > 7 || (minor == 7 && patch >= 6)) {
         // >=4.7.6
-        return Ok(3);
+        Ok(3)
     } else if major == 4 && minor == 7 {
         // >=4.7.0
-        return Ok(2);
+        Ok(2)
     } else if major == 4 {
         // >=4.0.0
-        return Ok(1);
+        Ok(1)
     } else {
-        return Ok(0);
+        Ok(0)
     }
 }
 
@@ -337,14 +337,14 @@ pub async fn save_licenses(license: &License, state: OOAState) -> Result<(), Lic
 
     debug!("Saving the license {license:#?}");
     save_license(
-        &license,
+        license,
         state,
         path.join(format!("{}.dlf", license.content_id)),
     )
     .await?;
 
     save_license(
-        &license,
+        license,
         state,
         path.join(format!("{}_cached.dlf", license.content_id)),
     )
@@ -355,7 +355,7 @@ pub async fn save_licenses(license: &License, state: OOAState) -> Result<(), Lic
 
 #[cfg(windows)]
 pub fn get_license_dir() -> Result<PathBuf, NativeError> {
-    let path = format!("C:/{}", LICENSE_PATH.to_string());
+    let path = format!("C:/{}", LICENSE_PATH);
     create_dir_all(&path)?;
     Ok(PathBuf::from(path))
 }
@@ -367,7 +367,7 @@ pub fn get_license_dir() -> Result<PathBuf, NativeError> {
     let path = format!(
         "{}/drive_c/{}",
         wine_prefix_dir()?.safe_str()?,
-        LICENSE_PATH.to_string()
+        LICENSE_PATH
     );
     create_dir_all(&path)?;
 

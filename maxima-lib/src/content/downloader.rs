@@ -168,6 +168,7 @@ impl<'a> AsyncWriterWrapper<'a> {
             zlib_state_file: std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
+                .truncate(true)
                 .open(zstate_path(&id, &path)?)?,
             decoder,
             inner,
@@ -344,7 +345,7 @@ impl<'a> EntryDownloadRequest<'a> {
     /// End is not inclusive
     pub async fn download_range(&mut self, start: i64, end: i64) -> Result<(), DownloaderError> {
         let offset = self.entry.data_offset();
-        let range = format!("bytes={}-{}", offset + start as i64, offset + end - 1);
+        let range = format!("bytes={}-{}", offset + start, offset + end - 1);
 
         let data = match self
             .client
@@ -509,6 +510,7 @@ impl ZipDownloader {
         let file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&file_path)
             .await?;
 
@@ -538,7 +540,7 @@ impl ZipDownloader {
         };
 
         if state == EntryDownloadState::Resumable {
-            let state_file = zstate_path(&self.id, &entry.name())?;
+            let state_file = zstate_path(&self.id, entry.name())?;
             if state_file.exists() {
                 let mut buf = Bytes::from(tokio::fs::read(state_file).await?);
                 decoder.restore_state(&mut buf);

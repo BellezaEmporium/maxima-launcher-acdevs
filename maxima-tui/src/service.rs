@@ -47,120 +47,110 @@ impl BridgeThread {
         let (tx1, rx0) = mpsc::channel();
 
         tokio::task::spawn(async move {
-            let die_fallback_transmitter = tx1.clone();
-            //panic::set_hook(Box::new( |_| {}));
-            let result = BridgeThread::run(rx1, tx1).await;
-            if result.is_err() {
-                die_fallback_transmitter
-                    .send(MaximaLibResponse::InteractionThreadDiedResponse)
-                    .unwrap();
-                panic!("Interact thread failed! {}", result.err().unwrap());
-            } else {
-                info!("Interact thread shut down")
+            let die_fallback = tx1.clone();
+            
+            if let Err(err) = BridgeThread::run(rx1, tx1).await {
+                let _ = die_fallback.send(MaximaLibResponse::InteractionThreadDiedResponse);
+                panic!("Interact thread failed! {err}");
             }
+            
+            info!("Interact thread shut down");
         });
 
         Self { rx: rx0, tx: tx0 }
     }
 
-    async fn run(rx1: Receiver<MaximaLibRequest>, tx1: Sender<MaximaLibResponse>) -> Result<()> {
+    async fn run(
+        rx1: Receiver<MaximaLibRequest>,
+        tx1: Sender<MaximaLibResponse>,
+    ) -> Result<()> {
         let maxima_arc: LockedMaxima = Maxima::new_with_options(
             MaximaOptionsBuilder::default()
                 .dummy_local_user(false)
                 .load_auth_storage(true)
                 .build()?,
-        )
-        .await?;
+        ).await?;
 
         {
             let maxima = maxima_arc.lock().await;
-            if maxima.start_lsx(maxima_arc.clone()).await.is_ok() {
-                info!("LSX started");
-            } else {
+            
+            let Ok(()) = maxima.start_lsx(maxima_arc.clone()).await else {
                 info!("LSX failed to start!");
-            }
+                return Ok(());
+            };
+            info!("LSX started");
 
-            let mut auth_storage = maxima.auth_storage().lock().await;
-            let logged_in = auth_storage.logged_in().await?;
+            let logged_in = {
+                let mut auth_storage = maxima.auth_storage().lock().await;
+                auth_storage.logged_in().await?
+            };
+
             if logged_in {
-                drop(auth_storage);
-
                 let user = maxima.local_user().await?;
                 let message = MaximaLibResponse::LoginResponse(InteractThreadLoginResponse {
                     success: true,
                     name: user.player().as_ref().unwrap().display_name().to_owned(),
                 });
-
                 tx1.send(message)?;
             } else {
                 tx1.send(MaximaLibResponse::LoginCacheEmpty)?;
             }
         }
 
-        'outer: loop {
-            let request = rx1.try_recv();
-            if request.is_err() {
+        'main: loop {
+            let Ok(request) = rx1.try_recv() else {
                 continue;
-            }
+            };
 
-            match request? {
+            let result: Result<()> = match request {
                 MaximaLibRequest::LoginRequest => {
-                    let channel = tx1.clone();
-                    let maxima = maxima_arc.clone();
-                    async move {
-                        let maxima = maxima.lock().await;
-
+                    let login = async || {
+                        let maxima = maxima_arc.lock().await;
                         let mut auth_storage = maxima.auth_storage().lock().await;
-                        let logged_in = auth_storage.logged_in().await?;
-                        if !logged_in {
-                            let res = login_flow().await.unwrap();
-                            maxima.auth_storage().lock().await.add_account(&res);
-                        };
+                        
+                        if !auth_storage.logged_in().await? {
+                            let res = login_flow().await?;
+                            auth_storage.add_account(&res);
+                        }
 
-                        channel
-                            .send(MaximaLibResponse::LoginResponse(
-                                InteractThreadLoginResponse {
-                                    success: true,
-                                    name: maxima
-                                        .local_user()
-                                        .await?
-                                        .player()
-                                        .as_ref()
-                                        .unwrap()
-                                        .display_name()
-                                        .to_owned(),
-                                },
-                            ))
-                            .unwrap();
+                        tx1.send(MaximaLibResponse::LoginResponse(InteractThreadLoginResponse {
+                            success: true,
+                            name: maxima
+                                .local_user()
+                                .await?
+                                .player()
+                                .as_ref()
+                                .unwrap()
+                                .display_name()
+                                .to_owned(),
+                        }))?;
 
-                        Ok::<(), anyhow::Error>(())
-                    }
-                    .await?;
+                        Ok(())
+                    };
+                    login().await
                 }
+
                 MaximaLibRequest::GetGamesRequest => {
-                    let channel = tx1.clone();
-                    let maxima = maxima_arc.clone();
+                    todo!("GetGamesRequest")
                 }
                 MaximaLibRequest::GetFriendsRequest => {
-                    let channel = tx1.clone();
-                    let maxima = maxima_arc.clone();
+                    todo!("GetFriendsRequest")
                 }
-                MaximaLibRequest::GetGameImagesRequest(slug) => {
-                    let channel = tx1.clone();
-                    let maxima = maxima_arc.clone();
+                MaximaLibRequest::GetGameImagesRequest(_) => {
+                    todo!("GetGameImagesRequest")
                 }
-                MaximaLibRequest::GetUserAvatarRequest(id, url) => {
-                    let channel = tx1.clone();
+                MaximaLibRequest::GetUserAvatarRequest(_, _) => {
+                    todo!("GetUserAvatarRequest")
                 }
-                MaximaLibRequest::GetGameDetailsRequest(slug) => {
-                    let channel = tx1.clone();
-                    let maxima = maxima_arc.clone();
+                MaximaLibRequest::GetGameDetailsRequest(_) => {
+                    todo!("GetGameDetailsRequest")
                 }
-                MaximaLibRequest::StartGameRequest(offer_id, hardcode) => {
-                    //start_game_request(maxima_arc.clone(), offer_id.clone(), hardcode).await;
+                MaximaLibRequest::StartGameRequest(_, _) => {
+                    todo!("StartGameRequest")
                 }
-                MaximaLibRequest::ShutdownRequest => break 'outer Ok(()),
-            }
+
+                MaximaLibRequest::ShutdownRequest => break 'main Ok(()),
+            };
         }
     }
 }

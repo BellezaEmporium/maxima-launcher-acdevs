@@ -75,7 +75,7 @@ impl OwnedOffer {
 
     pub async fn install_check_path(&self) -> Result<String, ManifestError> {
         Ok(parse_registry_path(
-            &self
+            self
                 .offer
                 .install_check_override()
                 .as_ref()
@@ -137,7 +137,7 @@ impl OwnedOffer {
         } else {
             let path = PathBuf::from(
                 parse_partial_registry_path(
-                    &self
+                    self
                         .offer
                         .install_check_override()
                         .as_ref()
@@ -258,7 +258,7 @@ impl OwnedTitle {
     }
 
     pub fn base_game(&self) -> Option<OwnedOffer> {
-        for offer in self.offers.iter() {
+        if let Some(offer) = self.offers.first() {
             if offer
                 .product
                 .product()
@@ -423,7 +423,7 @@ impl GameLibrary {
         }
 
         let mut titles = group_offers(offers);
-        titles.sort_by(|a, b| a.name().to_lowercase().cmp(&b.name().to_lowercase()));
+        titles.sort_by_key(|a| a.name().to_lowercase());
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?

@@ -7,21 +7,21 @@ edition = "2024"
 [dependencies]
 maxima-lib = { path = "../maxima-lib" }
 winapi = { version = "0.3.9", features = [ "memoryapi", "handleapi", "synchapi", "wincon", "consoleapi", "psapi", "wininet", "winerror", "iphlpapi", "tcpmib" ] }
-anyhow = "1.0.71"
-clap = { version = "4.3.8", features = ["derive"] }
-eframe = { version = "0.34.3", features = [ "persistence", "glow" ] }
+anyhow = "1.0.102"
+clap = { version = "4.6.1", features = ["derive"] }
+eframe = { version = "0.34.3", default-features = false, features = [ "persistence", "glow" ] }
 egui = "0.34.3"
 egui_extras = {version = "0.34.3", features = [ "svg", "all_loaders" ] }
 image = { version = "0.25.10", features = [ "png", "jpeg" ] }
 reqwest = { version = "0.13.4", features = ["stream", "rustls"], default-features = false }
-serde = "1.0.171"
-serde_json = "1.0.100"
+serde = "1.0.228"
+serde_json = "1.0.150"
 tokio = { version = "1.52.3", features = ["full"] }
-log = "0.4.19"
+log = "0.4.32"
 egui_demo_lib = "0.34.3"
 puffin_http = "0.17.0"
 puffin = "0.20.0"
-rustls = { version = "0.23", features = ["aws-lc-rs"] }
+rustls = { version = "0.23.40", features = ["aws-lc-rs"] }
 strum = { version = "0.28.0", features = ["derive"] }
 strum_macros = "0.28.0"
 sys-locale = "0.3.2"

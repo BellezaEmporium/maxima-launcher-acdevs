@@ -1,7 +1,7 @@
 /// Cloud sync is a process and a half. Here's a high-level overview of it:
 /// # Reading (pre-launch)
 /// - Call `/lock/read`, which gives us a link to an XML on S3:
-/// a manifest of all files in the cloud, along with their MD5 hash and last modified date
+///   a manifest of all files in the cloud, along with their MD5 hash and last modified date
 /// - If you feel the need to update the local files:
 ///   - Call `/lock/authorize` with a `Vec<CloudSyncRequest>` containing the corresponding `href` from the manifest
 ///   - This will return an XML with S3 targets corresponding to the files. Download them (the response body is the file, verbatim) and write them.
@@ -212,11 +212,7 @@ impl<'a> CloudSyncLock<'a> {
         let manifest: CloudSyncManifest = {
             let manifest = if let Ok(text) = res.text().await {
                 let result = quick_xml::de::from_str(&text);
-                if let Ok(manifest) = result {
-                    manifest
-                } else {
-                    None
-                }
+                result.unwrap_or_default()
             } else {
                 None
             };
@@ -261,10 +257,10 @@ impl<'a> CloudSyncLock<'a> {
     /// The file syncing functions are some real hastily written code at the moment.
     /// Lots of stuff could be better and merged between them. TODO: Clean it up.
     pub async fn sync_files(&self) -> Result<(), CloudSyncError> {
-        Ok(match self.mode {
+        match self.mode {
             CloudSyncLockMode::Read => self.sync_read_files().await,
             CloudSyncLockMode::Write => self.sync_write_files().await,
-        }?)
+        }
     }
 
     async fn sync_read_files(&self) -> Result<(), CloudSyncError> {
@@ -279,7 +275,7 @@ impl<'a> CloudSyncLock<'a> {
 
             let _md5 = if let Ok(file) = file {
                 let md5 = calc_file_md5(file, HashMode::Hex).await?;
-                if let Some(_) = self.manifest.file_by_md5(&md5) {
+                if self.manifest.file_by_md5(&md5).is_some() {
                     debug!("Skipping CloudSync read {}", &path.display());
                     continue;
                 }
@@ -347,6 +343,7 @@ impl<'a> CloudSyncLock<'a> {
             tokio::fs::create_dir_all(path.safe_parent()?).await?;
             let mut file = OpenOptions::new()
                 .write(true)
+                .truncate(true)
                 .create(true)
                 .open(path)
                 .await?;
@@ -405,13 +402,13 @@ impl<'a> CloudSyncLock<'a> {
 
             let md5 = calc_file_md5(file.try_clone().await?, HashMode::Hex).await?;
             let base62 = calc_file_md5(file.try_clone().await?, HashMode::Base62).await?;
-            if let Some(file) = self.manifest.file_by_md5(&md5) {
+            if let Some(existing) = self.manifest.file_by_md5(&md5) {
                 debug!("Skipping CloudSync write {}", &path.display());
-                skipped.push(file);
+                skipped.push(existing.clone());
                 continue;
             }
 
-            let name = unsubstitute_paths(&path)?;
+            let name = unsubstitute_paths(path)?;
             let write_data = WriteData::File {
                 name,
                 file,
@@ -444,10 +441,10 @@ impl<'a> CloudSyncLock<'a> {
             manifest.file.clear();
 
             for ele in skipped {
-                manifest.file.push(ele.clone());
+                manifest.file.push(ele);
             }
 
-            for (_, write_data) in &data {
+            for write_data in data.values() {
                 if let WriteData::File {
                     name, file, base62, ..
                 } = write_data
@@ -496,7 +493,7 @@ impl<'a> CloudSyncLock<'a> {
         for i in 0..authorizations.request.len() {
             let auth_req = &authorizations.request[i];
             let mut req = self.client.put(&auth_req.url);
-            for header in &auth_req.headers.header.clone().unwrap_or(Vec::new()) {
+            for header in &auth_req.headers.header.clone().unwrap_or_default() {
                 req = req.header(&header.attr_key, &header.attr_value);
             }
 
@@ -552,11 +549,11 @@ impl CloudSyncClient {
         }
     }
 
-    pub async fn obtain_lock<'a>(
+    pub async fn obtain_lock(
         &self,
         offer: &OwnedOffer,
         mode: CloudSyncLockMode,
-    ) -> Result<CloudSyncLock, CloudSyncError> {
+    ) -> Result<CloudSyncLock<'_>, CloudSyncError> {
         let id = format!(
             "{}_{}",
             offer.offer().primary_master_title_id(),
@@ -582,15 +579,15 @@ impl CloudSyncClient {
             return Err(CloudSyncError::NoConfig(offer.offer_id().clone()));
         }
 
-        Ok(self.obtain_lock_raw(&id, mode, allowed_files).await?)
+        self.obtain_lock_raw(&id, mode, allowed_files).await
     }
 
-    pub async fn obtain_lock_raw<'a>(
+    pub async fn obtain_lock_raw(
         &self,
         id: &str,
         mode: CloudSyncLockMode,
         allowed_files: Vec<PathBuf>,
-    ) -> Result<CloudSyncLock, CloudSyncError> {
+    ) -> Result<CloudSyncLock<'_>, CloudSyncError> {
         let (token, user_id) = acquire_auth(&self.auth).await?;
 
         let res = self
@@ -610,15 +607,14 @@ impl CloudSyncClient {
 
         let text = res.text().await?;
         let sync: CloudSyncSync = quick_xml::de::from_str(&text)?;
-        Ok(CloudSyncLock::new(
+        CloudSyncLock::new(
             &self.auth,
             &self.client,
             sync.manifest,
             lock,
             mode,
             allowed_files,
-        )
-        .await?)
+        ).await
     }
 }
 
@@ -743,7 +739,7 @@ impl CloudSyncManifest {
                     continue;
                 }
 
-                return Some(&ele);
+                return Some(ele);
             }
         }
 

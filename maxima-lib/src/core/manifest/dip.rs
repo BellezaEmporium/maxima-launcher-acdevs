@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{core::manifest::ManifestError, util::native::platform_path};
 use derive_getters::Getters;
@@ -162,7 +162,6 @@ fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
 
     let u16_bytes: Vec<u16> = bytes
         .chunks_exact(2)
-        .into_iter()
         .map(|a| u16::from_ne_bytes([a[0], a[1]]))
         .collect();
 
@@ -191,7 +190,7 @@ impl DiPManifest {
     }
 
     #[cfg(unix)]
-    pub async fn run_touchup(&self, install_path: &PathBuf) -> Result<(), ManifestError> {
+    pub async fn run_touchup(&self, install_path: &Path) -> Result<(), ManifestError> {
         use crate::{
             core::launch::mx_linux_setup,
             unix::{
@@ -215,12 +214,12 @@ impl DiPManifest {
     }
 
     #[cfg(windows)]
-    pub async fn run_touchup(&self, install_path: &PathBuf) -> Result<(), ManifestError> {
+    pub async fn run_touchup(&self, install_path: &Path) -> Result<(), ManifestError> {
         use crate::util::native::NativeError;
         use tokio::process::Command;
 
         let args = self.collect_touchup_args(install_path)?;
-        let path = install_path.join(&self.touchup.path());
+        let path = install_path.join(self.touchup.path());
 
         let mut binding = Command::new(path);
         let child = binding.args(args);
@@ -235,7 +234,7 @@ impl DiPManifest {
         Ok(())
     }
 
-    fn collect_touchup_args(&self, install_path: &PathBuf) -> Result<Vec<PathBuf>, ManifestError> {
+    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<PathBuf>, ManifestError> {
         let mut args = Vec::new();
         for arg in self.touchup.parameters.split(" ") {
             let arg = arg.replace("{locale}", "en_US").replace(

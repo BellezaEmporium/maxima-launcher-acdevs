@@ -142,7 +142,7 @@ async fn read_reg_key(path: &str) -> Result<Option<String>, RegistryError> {
                 });
             }
 
-            if dw_size <= 0 {
+            if dw_size == 0 {
                 RegCloseKey(handle);
                 return Err(RegistryError::Value {
                     value: value_name.to_string(),
@@ -207,7 +207,7 @@ pub async fn parse_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
 
 pub async fn parse_partial_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
     let mut parts = key
-        .split(|c| c == '[' || c == ']')
+        .split(|c: char| c == '[' || c == ']')
         .filter(|s| !s.is_empty());
 
     let path = if let (Some(first), Some(_second)) = (parts.next(), parts.next()) {

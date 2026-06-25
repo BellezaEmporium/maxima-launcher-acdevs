@@ -8,11 +8,11 @@ use maxima::{
     },
     util::native::take_foreground_focus,
 };
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 
 pub async fn login_oauth(
     maxima_arc: LockedMaxima,
-    channel: Sender<MaximaLibResponse>,
+    channel: UnboundedSender<MaximaLibResponse>,
     ctx: &Context,
 ) -> Result<(), BackendError> {
     let maxima = maxima_arc.lock().await;
@@ -30,7 +30,7 @@ pub async fn login_oauth(
         you: user.player().as_ref().ok_or(ServiceLayerError::MissingField)?.to_owned(),
     }));
 
-    channel.send(message)?;
+    channel.send(message).ok();
 
     take_foreground_focus()?;
     ctx.request_repaint();

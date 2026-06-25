@@ -212,7 +212,7 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                 .send(bridge_thread::MaximaLibRequest::GetGameDetailsRequest(
                     game.slug.clone(),
                 ))
-                .unwrap();
+                .unwrap_or_else(|_| ());
             app.games.get_mut(&app.game_sel).unwrap().details = GameDetailsWrapper::Loading;
             None
         }

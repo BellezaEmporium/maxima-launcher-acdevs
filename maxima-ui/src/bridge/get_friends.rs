@@ -1,7 +1,7 @@
 use egui::Context;
 use log::debug;
 use maxima::{core::LockedMaxima, rtm::client::BasicPresence};
-use std::sync::mpsc::Sender;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     bridge_thread::{BackendError, InteractThreadFriendListResponse, MaximaLibResponse},
@@ -11,8 +11,8 @@ use crate::{
 
 pub async fn get_friends_request(
     maxima_arc: LockedMaxima,
-    channel: Sender<MaximaLibResponse>,
-    remote_provider_channel: Sender<UIImageCacheLoaderCommand>,
+    channel: UnboundedSender<MaximaLibResponse>,
+    remote_provider_channel: UnboundedSender<UIImageCacheLoaderCommand>,
     ctx: &Context,
 ) -> Result<(), BackendError> {
     debug!("received request to load friends");
@@ -27,7 +27,7 @@ pub async fn get_friends_request(
         remote_provider_channel.send(UIImageCacheLoaderCommand::ProvideRemote(
             crate::ui_image::UIImageType::Avatar(friend.id().to_string()),
             friend.avatar().as_ref().unwrap().medium().path().to_string(),
-        ))?;
+        )).ok();
         let friend_info = UIFriend {
             name: friend.display_name().to_string(),
             id: friend.id().to_string(),
@@ -39,7 +39,7 @@ pub async fn get_friends_request(
         let res = MaximaLibResponse::FriendInfoResponse(InteractThreadFriendListResponse {
             friend: friend_info,
         });
-        channel.send(res)?;
+        channel.send(res).ok();
 
         ctx.request_repaint();
     }
