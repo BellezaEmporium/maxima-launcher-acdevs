@@ -77,7 +77,7 @@ const CORE_SENDER: &str = "EALS";
 
 const CHALLENGE_BUILD: &str = "release";
 const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb"; // Need to figure out how to generate this
-const CHALLENGE_VERSION: &str = "10,5,30,15625";
+const CHALLENGE_VERSION: &str = "10,5,30,15625"; // we will most certainly need to update that sooner or later... query EA-Protobuffers 'curr_version' ?
 
 lazy_static! {
     static ref LSX_PATTERN: Regex = Regex::new(r"<LSX>.*?</LSX>").unwrap();
