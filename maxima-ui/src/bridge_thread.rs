@@ -135,10 +135,6 @@ pub enum BackendError {
     #[error(transparent)]
     Rtm(#[from] RtmError),
     #[error(transparent)]
-    SendResponse(#[from] SendError<MaximaLibResponse>),
-    #[error(transparent)]
-    SendImageCacheLoaderCommand(#[from] SendError<UIImageCacheLoaderCommand>),
-    #[error(transparent)]
     ServiceGameImagesRequestBuilder(#[from] ServiceGameImagesRequestBuilderError),
     #[error(transparent)]
     ServiceHeroBackgroundImageRequestBuilder(#[from] ServiceHeroBackgroundImageRequestBuilderError),

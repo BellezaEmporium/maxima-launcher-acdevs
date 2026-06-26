@@ -97,6 +97,8 @@ pub struct LocalizedLocaleInfo {
     pub default: String,
     /// English (US)
     pub en_us: String, // I will deny all PRs that attempt to add british english.
+    /// French (France)
+    pub fr_fr: String, // Tabarnak j'veux pô ajouter l'canadien ça m'caliss, j'vais m'faire pogner par la police de la langue française
 }
 
 #[derive(Deserialize)]
@@ -338,10 +340,11 @@ pub(crate) use positional_replace;
 impl TranslationManager {
     /// Gets an instance of LocalizedStrings for the specified locale code
     pub fn get_for_locale(code: &str) -> LocalizedStrings {
-        let english = include_str!("../res/locale/en_us.json").to_owned();
-        let locale_json: &str = language_include_matcher!(code, &english;
+        let english = include_str!("../res/locale/en_us.json");
+        let locale_json: &str = language_include_matcher!(
+            code, english;
             "en-US" => "en_us",
-            //"de-bug" => "de_bug"
+            "fr-FR" => "fr_fr",
         );
 
         serde_json::from_str(locale_json).unwrap()
@@ -358,6 +361,7 @@ impl TranslationManager {
                 }
             }
             FrontendLanguage::EnUS => "en-US".to_owned(),
+            FrontendLanguage::FrFR => "fr-FR".to_owned(),
         };
 
         let s = Self::get_for_locale(locale.as_str());

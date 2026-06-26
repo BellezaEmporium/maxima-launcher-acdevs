@@ -1,0 +1,141 @@
+{
+    "errors" : {
+        "view_not_impl" : "Vue non implémentée",
+        "view_coming_soon": "Bientôt disponible !",
+        "critical_thread_crashed" : "Un thread critique en arrière-plan a planté, et l'application ne peut pas continuer à fonctionner."
+    },
+    "startup_flow": {
+        "starting": "Démarrage...",
+        "logging_in": "Connexion en cours...",
+        "login_header": "Vous n'êtes pas connecté.",
+        "login_button": "Se connecter avec EA",
+        "service_installer_header": "Configuration du service requise",
+        "service_installer_description": "Maxima doit installer un service Windows pour effectuer certaines tâches en arrière-plan. Vous serez invité à fournir des droits d'administrateur.",
+        "service_installer_button": "Installer le service"
+    },
+    "menubar" : {
+        "games" : "Jeux",
+        "store" : "Boutique",
+        "friends" : "Amis",
+        "settings" : "Paramètres",
+        "downloads" : "Téléchargements"
+    },
+    "profile_menu" : {
+        "view_profile" : "Voir le profil",
+        "view_wishlist" : "Voir la liste de souhaits"
+    },
+    "games_view" : {
+        "toolbar" : {
+            "genre_filter" : "Afficher",
+            "genre_options" : {
+                "all" : "Tous les genres",
+                "shooter" : "Tireur",
+                "simulation" : "Simulation"
+            },
+            "platform_filter" : "Plateforme" ,
+            "platform_options" : {
+                "all" : "Toutes les plateformes",
+                "windows" : "Windows",
+                "mac" : "Mac"
+            },
+            "search_bar_hint" : "Rechercher des jeux",
+            "running_suffix" : "En cours",
+            "out_of_date_suffix" : "Mise à jour disponible"
+        },
+        "main" : {
+            "play" : "▶ Jouer",
+            "stop" : "⏹ Arrêter",
+            "pause" : "⏸ Pause",
+            "resume" : "➡ Reprendre",
+            "install": "⮋ Installer",
+            "uninstall" : "⛼ Désinstaller",
+            "settings" : "⛭ Paramètres",
+            "playtime" : "Temps de jeu",
+            "achievements" : "Succès",
+            "no_loaded_games" : "Vous n'avez aucun jeu, ou ils ne sont pas encore chargés."
+        },
+        "details" : {
+            "min_system_req" : "Configuration minimale requise",
+            "rec_system_req" : "Configuration recommandée"
+        }
+    },
+    "friends_view" : {
+        "toolbar" : {
+            "online" : "En ligne",
+            "all" : "Tous",
+            "pending" : "En attente",
+            "blocked" : "Bloqués",
+            "add_friend" : "Ajouter un ami",
+            "filter_options" : {
+                "name" : "Nom",
+                "game" : "Jeu"
+            },
+            "search_hint" : "Rechercher des amis"
+        },
+        "friend_actions" : {
+            "profile" : "Profil",
+            "chat" : "Discussion",
+            "unfriend" : "Supprimer"
+        },
+        "status" : {
+            "unknown" : "Inconnu",
+            "do_not_disturb" : "Ne pas déranger",
+            "away" : "Absent",
+            "online" : "En ligne",
+            "offline" : "Hors ligne",
+            "presence_basic" : "Sur {game}",
+            "presence_rich" : "Sur {game} : {rich}"
+        }
+    },
+    "settings_view": {
+        "interface" : {
+            "header": "Interface",
+            "language": "Langue"
+        },
+        "game_installation" : {
+            "header": "Installation du jeu",
+            "default_folder": "Dossier d'installation par défaut",
+            "ignore_ood_warning": "Ignorer l'avertissement de lancement de jeu obsolète"
+        },
+        "performance" : {
+            "header": "Performance",
+            "disable_blur": "Désactiver les effets de flou"
+        }
+    },
+    "locale" : {
+        "default": "Par défaut du système",
+        "en_us": "Anglais",
+        "fr_fr": "Français"
+    },
+    "modals" : {
+        "close": "Fermer",
+        "game_install" : {
+            "header": "Installer {game}",
+            "locate_installed": "Localiser une installation existante du jeu",
+            "locate_action": "Localiser",
+            "locate_in_progress": "Localisation en cours...",
+            "locate_failed": "Échec de la localisation.",
+            "fresh_download": "Installer une nouvelle copie",
+            "fresh_path_confirmation": "Le jeu sera installé à :",
+            "fresh_path_invalid": "Chemin invalide",
+            "fresh_action": "Installer"
+        },
+        "game_settings" : { 
+            "header": "Paramètres du jeu pour {game}",
+            "not_installed": "Le jeu n'est pas installé",
+            "cloud_saves": "Sauvegardes dans le cloud",
+            "launch_arguments": "Arguments de lancement",
+            "executable_override": "Remplacement de l'exécutable",
+            "uninstall": "Désinstaller",
+            "version": "Version {version}"
+        },
+        "game_launch_out_of_date" : {
+            "header" : "Lancement d'un jeu obsolète",
+            "warning" : "Vous lancez une version plus ancienne de {gamename} que la version actuelle. Les fonctionnalités en ligne peuvent ne pas être disponibles.",
+            "really_warning" : "{gamename} a demandé que les mises à jour soient obligatoires. Vous pouvez choisir d'ignorer cela, mais procédez avec prudence. Lancez à vos risques et périls, et sauvegardez vos données.",
+            "comparison": "Installé : {local}, Dernier : {online}",
+            "ok_i_get_it" : "Ne plus m'avertir",
+            "launch" : "Lancer quand même"
+        }
+    }
+}

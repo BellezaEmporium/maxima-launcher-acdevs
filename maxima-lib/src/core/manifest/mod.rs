@@ -47,11 +47,11 @@ impl GameManifest for DiPManifest {
     }
 
     fn execute_path(&self, trial: bool) -> Option<String> {
-        self.execute_path(trial)
+        self.execute_path(trial).map(std::string::ToString::to_string)
     }
 
     fn version(&self) -> Option<String> {
-        self.version()
+        Some(self.version().to_string())
     }
 }
 
@@ -63,11 +63,11 @@ impl GameManifest for PreDiPManifest {
     }
 
     fn execute_path(&self, _: bool) -> Option<String> {
-        None // pre-dip games don't have an exe field, most if not all just use info in the offer
+        None // pre-dip games don't have an exe field, usually they put the exe in the "exclude" section for some reason
     }
 
-    fn version(&self) -> Option<String> {
-        self.version()
+    fn version(&self) -> std::option::Option<std::string::String> {
+        Some(self.version().to_string())
     }
 }
 

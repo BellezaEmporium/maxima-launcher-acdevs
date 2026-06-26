@@ -318,6 +318,7 @@ pub struct MaximaEguiApp {
 pub enum FrontendLanguage {
     SystemDefault,
     EnUS,
+    FrFR,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Copy, Clone)]

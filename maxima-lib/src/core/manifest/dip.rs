@@ -6,6 +6,47 @@ use crate::{core::manifest::ManifestError, util::native::platform_path};
 use derive_getters::Getters;
 use serde::Deserialize;
 
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct DiPContentIDs {
+    #[serde(rename = "contentID", default)]
+    pub items: Vec<String>,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct DiPUninstall {
+    pub path: String,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct DiPInstallManifest {
+    #[serde(rename = "filePath")]
+    pub file_path: String,
+}
+
+/// <gameTitle locale="en_US">SimCity 3000 Unlimited</gameTitle>
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct DiPGameTitle {
+    #[serde(rename = "@locale")]
+    pub locale: String,
+    #[serde(rename = "$text")]
+    pub title: String,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct DiPGameTitles {
+    #[serde(rename = "gameTitle", default)]
+    pub items: Vec<DiPGameTitle>,
+}
+
+/// <name locale="en_US">SimCity 3000 Unlimited Launcher</name>
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct DiPName {
+    #[serde(rename = "@locale")]
+    pub locale: String,
+    #[serde(rename = "$text")]
+    pub value: String,
+}
+
 macro_rules! dip_type {
     (
         $(#[$message_attr:meta])*
@@ -24,10 +65,8 @@ macro_rules! dip_type {
         }
     ) => {
         pastey::paste! {
-            // Main struct definition
             $(#[$message_attr])*
             #[derive(Default, Debug, Clone, Deserialize, PartialEq, Getters)]
-            #[serde(rename_all = "camelCase")]
             pub struct [<DiP $message_name>] {
                 $(
                     $(#[$attr_field_attr])*
@@ -43,31 +82,21 @@ macro_rules! dip_type {
     }
 }
 
-dip_type!(
-    Launcher;
-    attr {
-        uid: String,
-    },
-    data {
-        file_path: String,
-        execute_elevated: Option<bool>,
-        #[serde(default)]
-        trial: bool,
-    }
-);
 
 dip_type!(
     FeatureFlags;
     attr {
-        allowMultipleInstances: bool,
-        autoUpdateEnabled: bool,
-        dynamicContentSupportEnabled: bool,
-        enableDifferentialUpdate: bool,
-        enableOriginInGameAPI: bool,
-        forceTouchupInstallerAfterUpdate: bool,
-        languageChangeSupportEnabled: bool,
-        treatUpdatesAsMandatory: bool,
-        useGameVersionFromManifest: bool,
+        allowMultipleInstances: String,
+        autoUpdateEnabled: String,
+        dynamicContentSupportEnabled: String,
+        enableDifferentialUpdate: String,
+        enableOriginInGameAPI: String,
+        #[serde(default)]
+        enableVersionUpdate: String,
+        forceTouchupInstallerAfterUpdate: String,
+        languageChangeSupportEnabled: String,
+        treatUpdatesAsMandatory: String,
+        useGameVersionFromManifest: String,
     },
     data {}
 );
@@ -83,8 +112,10 @@ dip_type!(
 dip_type!(
     Requirements;
     attr {
+        #[serde(default)]
+        clientVersion: String,
         osMinVersion: String,
-        osReqs64Bit: bool,
+        osReqs64Bit: String,
     },
     data {}
 );
@@ -100,9 +131,30 @@ dip_type!(
 );
 
 dip_type!(
+    Launcher;
+    attr {
+        uid: String,
+    },
+    data {
+        #[serde(default)]
+        name: Vec<DiPName>,
+        filePath: String,
+        #[serde(default)]
+        parameters: Option<String>,
+        #[serde(default)]
+        requires64BitOS: String,
+        #[serde(default)]
+        trial: String,
+        #[serde(default)]
+        requiresMetal: String,
+    }
+);
+
+dip_type!(
     Runtime;
     attr {},
     data {
+        #[serde(default)]
         launcher: Vec<DiPLauncher>,
     }
 );
@@ -111,10 +163,43 @@ dip_type!(
     Touchup;
     attr {},
     data {
-        file_path: String,
+        filePath: String,
         parameters: String,
+        #[serde(default)]
+        updateParameters: String,
+        #[serde(default)]
+        repairParameters: String,
     }
 );
+
+dip_type!(
+    Manifest;
+    attr {
+        version: String,
+    },
+    data {
+        buildMetaData: DiPBuildMetaData,
+        #[serde(rename = "contentIDs", default)]
+        contentIds: DiPContentIDs,
+        #[serde(default)]
+        gameTitles: DiPGameTitles,
+        #[serde(default)]
+        uninstall: DiPUninstall,
+        runtime: DiPRuntime,
+        touchup: DiPTouchup,
+        #[serde(default)]
+        installManifest: DiPInstallManifest,
+    }
+);
+
+dip_type!(
+    LegacyManifest;
+    attr {},
+    data {
+        executable: DiPTouchup,
+    }
+);
+
 
 fn remove_leading_slash(path: &str) -> &str {
     path.strip_prefix('/').unwrap_or(path)
@@ -128,31 +213,34 @@ fn remove_trailing_backslash(path: &str) -> &str {
     path.strip_suffix('\\').unwrap_or(path)
 }
 
-impl DiPTouchup {
-    pub fn path(&self) -> &str {
-        remove_leading_slash(&self.file_path)
+fn split_args(s: &str) -> Result<Vec<String>, ManifestError> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for ch in s.chars() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            ' ' if !in_quotes => {
+                if !current.is_empty() {
+                    args.push(current.clone());
+                    current.clear();
+                }
+            }
+            _ => current.push(ch),
+        }
     }
+
+    if in_quotes {
+        return Err(ManifestError::Decode);
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    Ok(args)
 }
-
-dip_type!(
-    Manifest;
-    attr {
-        version: String,
-    },
-    data {
-        buildMetaData: DiPBuildMetaData,
-        runtime: DiPRuntime,
-        touchup: DiPTouchup,
-    }
-);
-
-dip_type!(
-    LegacyManifest;
-    attr {},
-    data {
-        executable: DiPTouchup,
-    }
-);
 
 /// https://www.reddit.com/r/rust/comments/11co87m/comment/ja4sy88
 fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
@@ -165,28 +253,67 @@ fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
         .map(|a| u16::from_ne_bytes([a[0], a[1]]))
         .collect();
 
-    if let Ok(v) = String::from_utf16(&u16_bytes) {
-        return Some(v);
+    String::from_utf16(&u16_bytes).ok()
+}
+
+impl DiPTouchup {
+    pub fn path(&self) -> &str {
+        remove_leading_slash(&self.filePath)
+    }
+}
+
+impl DiPLauncher {
+    pub fn is_trial(&self) -> bool {
+        self.trial == "1" || self.trial.eq_ignore_ascii_case("true")
     }
 
-    None
+    pub fn display_name(&self, locale: &str) -> Option<&str> {
+        self.name
+            .iter()
+            .find(|n| n.locale == locale)
+            .or_else(|| self.name.iter().find(|n| n.locale == "en_US"))
+            .map(|n| n.value.as_str())
+    }
 }
 
 impl DiPManifest {
-    pub async fn read(path: &PathBuf) -> Result<Self, ManifestError> {
+    pub async fn read(path: &Path) -> Result<Self, ManifestError> {
         let bytes = tokio::fs::read(path).await?;
         let string = bytes_to_string(bytes).ok_or(ManifestError::Decode)?;
-
+        
         Ok(quick_xml::de::from_str(&string)?)
     }
 
-    pub fn execute_path(&self, trial: bool) -> Option<String> {
-        let launcher = self.runtime.launcher.iter().find(|l| l.trial == trial);
-        launcher.map(|l| l.file_path.clone())
+    pub fn version(&self) -> &str {
+        &self.buildMetaData.gameVersion.attr_version
     }
 
-    pub fn version(&self) -> Option<String> {
-        Some(self.buildMetaData.gameVersion.attr_version().clone())
+    pub fn execute_path(&self, trial: bool) -> Option<&str> {
+        self.runtime
+            .launcher
+            .iter()
+            .find(|l| l.is_trial() == trial)
+            .map(|l| l.filePath.as_str())
+    }
+
+    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<String>, ManifestError> {
+        let install_str = platform_path(
+            remove_trailing_backslash(
+                install_path.to_str().ok_or(ManifestError::Decode)?
+            )
+            .replace('/', "\\"),
+        )
+        .to_str()
+        .ok_or(ManifestError::Decode)?
+        .to_string();
+
+        let expanded = self
+            .touchup
+            .parameters
+            .replace("{locale}", "en_US")
+            .replace("{installLocation}", &install_str);
+
+        split_args(&expanded)
     }
 
     #[cfg(unix)]
@@ -205,10 +332,9 @@ impl DiPManifest {
             install_path.to_str().ok_or(ManifestError::Decode)?,
         ));
         let args = self.collect_touchup_args(&install_path)?;
-        let path = install_path.join(&self.touchup.path());
-        let path = case_insensitive_path(path);
-        run_wine_command(path, Some(args), None, true, CommandType::Run).await?;
+        let path = case_insensitive_path(install_path.join(self.touchup.path()));
 
+        run_wine_command(path, Some(args), None, true, CommandType::Run).await?;
         invalidate_mx_wine_registry().await;
         Ok(())
     }
@@ -221,10 +347,12 @@ impl DiPManifest {
         let args = self.collect_touchup_args(install_path)?;
         let path = install_path.join(self.touchup.path());
 
-        let mut binding = Command::new(path);
-        let child = binding.args(args);
+        let status = Command::new(&path)
+            .args(&args)
+            .spawn()?
+            .wait()
+            .await?;
 
-        let status = child.spawn()?.wait().await?;
         if !status.success() {
             return Err(ManifestError::Native(NativeError::Command(
                 status.code().unwrap_or(0),
@@ -232,23 +360,5 @@ impl DiPManifest {
         }
 
         Ok(())
-    }
-
-    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<PathBuf>, ManifestError> {
-        let mut args = Vec::new();
-        for arg in self.touchup.parameters.split(" ") {
-            let arg = arg.replace("{locale}", "en_US").replace(
-                "\"{installLocation}\"",
-                platform_path(
-                    remove_trailing_backslash(install_path.to_str().ok_or(ManifestError::Decode)?)
-                        .replace("/", "\\"),
-                )
-                .to_str()
-                .ok_or(ManifestError::Decode)?,
-            );
-
-            args.push(PathBuf::from(arg));
-        }
-        Ok(args)
     }
 }

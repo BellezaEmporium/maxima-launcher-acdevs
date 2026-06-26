@@ -6,7 +6,7 @@ use maxima::util::registry::set_up_registry;
 use maxima::util::service::SERVICE_NAME;
 use std::ffi::OsString;
 use std::path::Path;
-use std::sync::mpsc::{self, Receiver};
+use tokio::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 use structured_logger::json::new_writer;
@@ -36,7 +36,7 @@ fn service_main(arguments: Vec<OsString>) {
 }
 
 fn bootstrap_service(_arguments: Vec<OsString>) -> windows_service::Result<()> {
-    let (shutdown_tx, shutdown_rx) = mpsc::channel();
+    let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
@@ -118,7 +118,7 @@ async fn req_inject_library(body: web::Bytes) -> Result<HttpResponse, self::Serv
     Ok(HttpResponse::Ok().body("Injected"))
 }
 
-fn run_service(shutdown_rx: Receiver<()>) -> Result<(), self::ServerError> {
+fn run_service(mut shutdown_rx: Receiver<()>) -> Result<(), self::ServerError> {
     let log_path = Path::new("C:/ProgramData/Maxima/Logs/MaximaBackgroundService.log");
     std::fs::create_dir_all(log_path.safe_parent()?)?;
     let log_file = File::create(log_path)?;

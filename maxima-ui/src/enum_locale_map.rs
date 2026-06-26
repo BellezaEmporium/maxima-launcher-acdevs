@@ -72,6 +72,7 @@ impl EnumToString<FrontendLanguage> for TranslationManager {
         match variant {
             FrontendLanguage::SystemDefault => &self.localization.locale.default,
             FrontendLanguage::EnUS => &self.localization.locale.en_us,
+            FrontendLanguage::FrFR => &self.localization.locale.fr_fr,
         }
     }
     fn get_string(&self, variant: &mut FrontendLanguage) -> &str {

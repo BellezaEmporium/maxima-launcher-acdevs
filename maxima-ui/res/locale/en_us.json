@@ -104,7 +104,8 @@
     },
     "locale" : {
         "default": "System Default",
-        "en_us": "English"
+        "en_us": "English",
+        "fr_fr": "French"
     },
     "modals" : {
         "close": "Close",

@@ -5,6 +5,23 @@ use derive_getters::Getters;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct PreDiPContentIDs {
+    #[serde(rename = "contentID", default)]
+    pub items: Vec<String>,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct PreDiPUninstall {
+    pub path: String,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+pub struct PreDiPInstallManifest {
+    #[serde(rename = "filePath")]
+    pub file_path: String,
+}
+
 macro_rules! predip_type {
     (
         $(#[$message_attr:meta])*
@@ -23,10 +40,8 @@ macro_rules! predip_type {
         }
     ) => {
         pastey::paste! {
-            // Main struct definition
             $(#[$message_attr])*
             #[derive(Default, Debug, Clone, Deserialize, PartialEq, Getters)]
-            #[serde(rename_all = "camelCase")]
             pub struct [<PreDiP $message_name>] {
                 $(
                     $(#[$attr_field_attr])*
@@ -43,28 +58,33 @@ macro_rules! predip_type {
 }
 
 predip_type!(
-    Executable;
-    attr {},
-    data {
-        file_path: String,
-        parameters: String,
-        update_parameters: String,
-        repair_parameters: String,
-    }
+    FeatureFlags;
+    attr {
+        forceTouchupInstallerAfterUpdate: String,
+        autoUpdateEnabled: String,
+        treatUpdatesAsMandatoryEnabled: String,
+        useGameVersionFromManifestEnabled: String,
+        UnableDifferentialUpdate: String,
+    },
+    data {}
 );
 
 predip_type!(
-    Metadata;
+    Os;
+    attr {
+        minVersion: String,
+    },
+    data {}
+);
+
+predip_type!(
+    Executable;
     attr {},
     data {
-        feature_flags: Vec<String>,
-        os: String,
-        ignore: Vec<String>,
-        locale_info: Vec<PreDiPLocaleInfo>,
-        file_path: String,
+        filePath: String,
         parameters: String,
-        update_parameters: String,
-        repair_parameters: String,
+        updateParameters: String,
+        repairParameters: String,
     }
 );
 
@@ -76,7 +96,37 @@ predip_type!(
     data {
         title: String,
         eula: String,
+        #[serde(default)]
         exclude: Vec<String>,
+    }
+);
+
+predip_type!(
+    Metadata;
+    attr {},
+    data {
+        featureFlags: PreDiPFeatureFlags,
+        os: PreDiPOs,
+        #[serde(default)]
+        ignore: Vec<String>,
+        #[serde(default)]
+        localeInfo: Vec<PreDiPLocaleInfo>,
+    }
+);
+
+predip_type!(
+    Manifest;
+    attr {
+        gameVersion: String,
+        manifestVersion: String,
+    },
+    data {
+        #[serde(rename = "contentIDs")]
+        contentIds: PreDiPContentIDs,
+        uninstall: PreDiPUninstall,
+        metadata: PreDiPMetadata,
+        executable: PreDiPExecutable,
+        installManifest: PreDiPInstallManifest,
     }
 );
 
@@ -92,21 +142,6 @@ fn remove_trailing_backslash(path: &str) -> &str {
     path.strip_suffix('\\').unwrap_or(path)
 }
 
-predip_type!(
-    Manifest;
-    attr {
-        game_version: String,
-        manifest_version: String,
-    },
-    data {
-        content_ids: Vec<String>,
-        uninstall: String,
-        metadata: Vec<PreDiPMetadata>,
-        executable: PreDiPExecutable,
-        install_manifest: String,
-    }
-);
-
 /// https://www.reddit.com/r/rust/comments/11co87m/comment/ja4sy88
 fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
     if let Ok(v) = String::from_utf8(bytes.clone()) {
@@ -118,23 +153,69 @@ fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
         .map(|a| u16::from_ne_bytes([a[0], a[1]]))
         .collect();
 
-    if let Ok(v) = String::from_utf16(&u16_bytes) {
-        return Some(v);
-    }
-
-    None
+    String::from_utf16(&u16_bytes).ok()
 }
 
+
 impl PreDiPManifest {
-    pub async fn read(path: &PathBuf) -> Result<Self, ManifestError> {
+    pub async fn read(path: &Path) -> Result<Self, ManifestError> {
         let bytes = tokio::fs::read(path).await?;
         let string = bytes_to_string(bytes).ok_or(ManifestError::Decode)?;
-
         Ok(quick_xml::de::from_str(&string)?)
     }
 
-    pub fn version(&self) -> Option<String> {
-        Some(self.attr_game_version.clone())
+    pub fn version(&self) -> &str {
+        &self.attr_gameVersion
+    }
+
+    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<String>, ManifestError> {
+        let install_str = platform_path(
+            remove_trailing_backslash(
+                install_path.to_str().ok_or(ManifestError::Decode)?
+            )
+            .replace('/', "\\"),
+        )
+        .to_str()
+        .ok_or(ManifestError::Decode)?
+        .to_string();
+
+        let expanded = self
+            .executable
+            .parameters
+            .replace("{locale}", "en_US")
+            .replace("{installLocation}", &install_str);
+
+        Self::split_args(&expanded)
+    }
+
+    fn split_args(s: &str) -> Result<Vec<String>, ManifestError> {
+        let mut args = Vec::new();
+        let mut current = String::new();
+        let mut in_quotes = false;
+
+        for ch in s.chars() {
+            match ch {
+                '"' => in_quotes = !in_quotes,
+                ' ' if !in_quotes => {
+                    if !current.is_empty() {
+                        args.push(current.clone());
+                        current.clear();
+                    }
+                }
+                _ => current.push(ch),
+            }
+        }
+
+        if in_quotes {
+            // Unterminated quote — malformed manifest
+            return Err(ManifestError::Decode);
+        }
+
+        if !current.is_empty() {
+            args.push(current);
+        }
+
+        Ok(args)
     }
 
     #[cfg(unix)]
@@ -153,11 +234,11 @@ impl PreDiPManifest {
             install_path.to_str().ok_or(ManifestError::Decode)?,
         ));
         let args = self.collect_touchup_args(&install_path)?;
+        let path = case_insensitive_path(
+            install_path.join(remove_leading_slash(&self.executable.filePath))
+        );
 
-        let path = install_path.join(remove_leading_slash(&self.executable.file_path));
-        let path = case_insensitive_path(path);
         run_wine_command(path, Some(args), None, true, CommandType::Run).await?;
-
         invalidate_mx_wine_registry().await;
         Ok(())
     }
@@ -168,12 +249,14 @@ impl PreDiPManifest {
         use tokio::process::Command;
 
         let args = self.collect_touchup_args(install_path)?;
-        let path = install_path.join(&self.executable.file_path);
+        let path = install_path.join(remove_leading_slash(&self.executable.filePath));
 
-        let mut binding = Command::new(path);
-        let child = binding.args(args);
+        let status = Command::new(&path)
+            .args(&args)
+            .spawn()?
+            .wait()
+            .await?;
 
-        let status = child.spawn()?.wait().await?;
         if !status.success() {
             return Err(ManifestError::Native(NativeError::Command(
                 status.code().unwrap_or(0),
@@ -181,23 +264,5 @@ impl PreDiPManifest {
         }
 
         Ok(())
-    }
-
-    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<PathBuf>, ManifestError> {
-        let mut args = Vec::new();
-        for arg in self.executable.parameters.split(" ") {
-            let arg = arg.replace("{locale}", "en_US").replace(
-                "\"{installLocation}\"",
-                platform_path(
-                    remove_trailing_backslash(install_path.to_str().ok_or(ManifestError::Decode)?)
-                        .replace("/", "\\"),
-                )
-                .to_str()
-                .ok_or(ManifestError::Decode)?,
-            );
-
-            args.push(PathBuf::from(arg));
-        }
-        Ok(args)
     }
 }

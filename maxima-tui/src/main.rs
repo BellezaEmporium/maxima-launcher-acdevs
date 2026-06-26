@@ -112,7 +112,10 @@ impl App {
     }
 
     fn run(&mut self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
-        self.bridge.tx.send(MaximaLibRequest::LoginRequest).unwrap();
+        let tx = self.bridge.tx.clone();
+        tokio::spawn(async move {
+            tx.send(MaximaLibRequest::LoginRequest).await.ok();
+        });
 
         while self.state == AppState::Running {
             self.draw(terminal)?;

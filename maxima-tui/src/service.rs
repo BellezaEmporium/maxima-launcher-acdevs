@@ -1,4 +1,4 @@
-use std::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use anyhow::{Result, bail};
 use log::info;
@@ -43,8 +43,8 @@ pub struct BridgeThread {
 
 impl BridgeThread {
     pub fn new() -> Self {
-        let (tx0, rx1) = mpsc::channel();
-        let (tx1, rx0) = mpsc::channel();
+        let (tx0, rx1) = mpsc::channel(1);
+        let (tx1, rx0) = mpsc::channel(1);
 
         tokio::task::spawn(async move {
             let die_fallback = tx1.clone();
@@ -61,7 +61,7 @@ impl BridgeThread {
     }
 
     async fn run(
-        rx1: Receiver<MaximaLibRequest>,
+        mut rx1: Receiver<MaximaLibRequest>,
         tx1: Sender<MaximaLibResponse>,
     ) -> Result<()> {
         let maxima_arc: LockedMaxima = Maxima::new_with_options(
@@ -91,9 +91,9 @@ impl BridgeThread {
                     success: true,
                     name: user.player().as_ref().unwrap().display_name().to_owned(),
                 });
-                tx1.send(message)?;
+                tx1.send(message).await.ok();
             } else {
-                tx1.send(MaximaLibResponse::LoginCacheEmpty)?;
+                tx1.send(MaximaLibResponse::LoginCacheEmpty).await.ok();
             }
         }
 
@@ -110,7 +110,7 @@ impl BridgeThread {
                         
                         if !auth_storage.logged_in().await? {
                             let res = login_flow().await?;
-                            auth_storage.add_account(&res);
+                            auth_storage.add_account(&res).await?;
                         }
 
                         tx1.send(MaximaLibResponse::LoginResponse(InteractThreadLoginResponse {
@@ -123,7 +123,7 @@ impl BridgeThread {
                                 .unwrap()
                                 .display_name()
                                 .to_owned(),
-                        }))?;
+                        })).await.ok();
 
                         Ok(())
                     };
