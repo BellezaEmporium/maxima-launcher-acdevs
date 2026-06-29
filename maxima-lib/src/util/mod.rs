@@ -6,6 +6,7 @@ pub mod registry;
 pub mod simple_crypto;
 pub mod system_profiler_utils;
 pub mod wmi_utils;
+pub mod lsx_crypto;
 
 #[cfg(windows)]
 pub mod dll_injector;

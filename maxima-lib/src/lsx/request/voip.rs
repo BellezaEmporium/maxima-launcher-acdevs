@@ -11,5 +11,5 @@ pub async fn handle_voip_status_request(
     _: LockedConnectionState,
     _: LSXGetVoipStatus,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
-    make_lsx_handler_response!(Response, GetVoipStatusResponse, { attr_Available: false, attr_Active: false })
+    return make_lsx_handler_response!(Response, GetVoipStatusResponse, { attr_Available: false, attr_Active: false })
 }

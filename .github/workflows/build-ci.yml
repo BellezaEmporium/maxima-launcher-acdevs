@@ -26,18 +26,10 @@ jobs:
     - name: Checkout the repo
       uses: actions/checkout@v4
 
-    - name: Cache Rust ${{ matrix.rust-version }}
-      uses: actions/cache@v3
-      with:
-        path: ${{ github.workspace }}\rust\.rustup
-        key: rust-${{ matrix.rust-version }}-${{ hashFiles('**/rust-toolchain') }}
-
     - name: Setup Rust ${{ matrix.rust-version }}
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@master
       with:
-        profile: minimal
         toolchain: ${{ matrix.rust-version }}
-        override: true
         components: rustfmt, clippy
 
     - name: Install Protoc
@@ -55,6 +47,15 @@ jobs:
         shared-key: ${{ runner.os}}-rust-deps
         cache-on-failure: true
         save-if: ${{ github.ref == 'refs/heads/master' }}
+
+    - name: Clippy
+      run: cargo clippy --workspace -- -D warnings
+
+    - name: Format check
+      run: cargo fmt --all -- --check
+
+    - name: Tests
+      run: cargo test --workspace
 
     - name: Build Maxima
       if: runner.os == 'Windows'

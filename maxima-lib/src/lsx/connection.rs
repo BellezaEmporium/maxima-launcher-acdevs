@@ -5,14 +5,14 @@ use quick_xml::DeError;
 use regex::Regex;
 use std::{
     io::{ErrorKind, Read, Write},
-    net::TcpStream,
     path::PathBuf,
     sync::Arc,
-    time::Duration,
 };
 use sysinfo::{Pid, System};
 use thiserror::Error;
-use tokio::sync::{MutexGuard, RwLock};
+use tokio::{io::AsyncWriteExt, sync::{MutexGuard, RwLock}};
+use tokio::net::TcpStream;
+use rand::rand_core::{Rng};
 
 use super::{
     request::{
@@ -76,9 +76,8 @@ pub enum LSXConnectionError {
 const CORE_SENDER: &str = "EALS";
 
 const CHALLENGE_BUILD: &str = "release";
-const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb"; // Need to figure out how to generate this
-const CHALLENGE_VERSION: &str = "10,5,30,15625"; // we will most certainly need to update that sooner or later... query EA-Protobuffers 'curr_version' ?
-
+//const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb"; // Need to figure out how to generate this
+const CHALLENGE_VERSION: &str = "10,5,64,37936";
 lazy_static! {
     static ref LSX_PATTERN: Regex = Regex::new(r"<LSX>.*?</LSX>").unwrap();
 }
@@ -205,17 +204,15 @@ pub struct Connection {
 impl Connection {
     pub async fn new(
         maxima_arc: LockedMaxima,
-        stream: TcpStream,
+        mut stream: TcpStream,
     ) -> Result<Self, LSXConnectionError> {
         stream.set_nodelay(true)?;
-        stream.set_nonblocking(true)?;
-        stream.set_read_timeout(Some(Duration::from_secs(1)))?;
 
         let maxima: MutexGuard<'_, Maxima> = maxima_arc.lock().await;
         let context: &ActiveGameContext = match maxima.playing() {
-            Some(context) => context,
+            Some(ctx) => ctx,
             None => {
-                stream.shutdown(std::net::Shutdown::Both)?;
+                stream.shutdown().await?;
                 return Err(LSXConnectionError::GameContext);
             }
         };
@@ -252,19 +249,24 @@ impl Connection {
             warn!("Failed to find PID through launch ID, things may not work!");
         }
 
+        // Generate fresh 16-byte challenge per connection
+        let challenge: String = {
+            let mut bytes = [0u8; 16];
+            rand::rng().fill_bytes(&mut bytes);
+            hex::encode(bytes)
+        };
+
+        drop(maxima);
+
         let state = Arc::new(RwLock::new(ConnectionState {
             maxima: maxima_arc.clone(),
-            challenge: CHALLENGE_KEY.to_string(),
+            challenge,
             encryption: EncryptionState::Disabled,
             pid: pid.unwrap_or(0),
             queued_messages: Vec::new(),
         }));
 
-        Ok(Self {
-            maxima: maxima_arc.clone(),
-            stream,
-            state,
-        })
+        Ok(Self { maxima: maxima_arc, stream, state })
     }
 
     // State
@@ -290,20 +292,13 @@ impl Connection {
     }
 
     pub async fn listen(&mut self) -> Result<(), LSXConnectionError> {
+        self.stream.readable().await?;
         let mut buffer = [0; 1024 * 8];
-
-        let n = match self.stream.read(&mut buffer) {
-            Ok(0) => {
-                return Err(LSXConnectionError::Closed);
-            }
-            Ok(n) => n,
-            Err(err) => {
-                let kind = err.kind();
-                if kind == ErrorKind::WouldBlock {
-                    return Ok(());
-                }
-                return Err(LSXConnectionError::Internal(kind));
-            }
+        let n = match self.stream.try_read(&mut buffer) {
+            Ok(0) => return Err(LSXConnectionError::Closed),
+            Ok(n) =>  n,
+            Err(e) if e.kind() == ErrorKind::WouldBlock => return Ok(()),
+            Err(e) => return Err(e.into()),
         };
 
         let state = self.state.write().await;
@@ -329,13 +324,13 @@ impl Connection {
     pub async fn process_queue(&mut self) -> Result<(), LSXConnectionError> {
         let mut state = self.state.write().await;
         for message in &state.queued_messages {
-            if let Err(err) = self.stream.write(message.as_bytes()) {
+            if let Err(err) = self.stream.write(message.as_bytes()).await {
                 error!("Failed to send LSX message: {}", err);
             }
         }
 
         if !state.queued_messages.is_empty() {
-            self.stream.flush()?;
+            self.stream.flush().await?;
         }
 
         state.queued_messages.clear();
@@ -349,8 +344,7 @@ impl Connection {
 
         let mut message = message.to_string();
         // replace unstable remove_matches (when most of the devs seem to think that it's stable since 2024 ??) w/ regex
-        let re = regex::Regex::new(r#"version="" "#).unwrap();
-        message = re.replace_all(&message, "").to_string();
+        message = message.replace(r#"version="" "#, "");
         let lsx_message: LSX = quick_xml::de::from_str(message.as_str())?;
 
         let state = self.state.clone();

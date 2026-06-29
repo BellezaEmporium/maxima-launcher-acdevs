@@ -15,7 +15,7 @@ pub async fn handle_pi_availability_request(
     _: LockedConnectionState,
     _: LSXIsProgressiveInstallationAvailable,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
-    make_lsx_handler_response!(Response, IsProgressiveInstallationAvailableResponse, {
+    return make_lsx_handler_response!(Response, IsProgressiveInstallationAvailableResponse, {
         attr_Available: false,
         attr_ItemId: "Origin.OFR.50.0001456".to_string(),
     })
@@ -25,7 +25,7 @@ pub async fn handle_pi_installed_chunks_request(
     _: LockedConnectionState,
     request: LSXAreChunksInstalled,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
-    make_lsx_handler_response!(Response, AreChunksInstalledResponse, {
+    return make_lsx_handler_response!(Response, AreChunksInstalledResponse, {
         attr_ItemId: "Origin.OFR.50.0001456".to_string(),
         attr_Installed: true,
         chunk_ids: request.chunk_ids,

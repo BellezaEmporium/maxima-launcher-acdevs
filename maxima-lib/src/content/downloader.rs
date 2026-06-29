@@ -292,8 +292,7 @@ impl<'a> EntryDownloadRequest<'a> {
             if file_size > entry_size {
                 return Ok(EntryDownloadState::Borked);
             }
-
-            return Ok(EntryDownloadState::Borked);
+            return Ok(EntryDownloadState::Resumable);
         }
 
         // We must be calculating the hash incorrectly or something
@@ -317,10 +316,7 @@ impl<'a> EntryDownloadRequest<'a> {
     async fn download(&mut self) -> Result<(), DownloadError> {
         let mut tries = 0;
         while tries < 5 {
-            // State serialization is disabled for now.
-            //let start = self.decoder.write_in_pos() as i64;
-
-            let start = 0;
+            let start = self.decoder.write_in_pos() as i64;
 
             debug!(
                 "Downloading {} from {} to {} ({})",

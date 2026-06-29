@@ -139,7 +139,7 @@ impl RtmConnectionManager {
                                 if let Some(tx) =
                                     pending_responses.remove(id)
                                 {
-                                    tx.send(msg).unwrap();
+                                    let _ = tx.send(msg);
                                 } else if id.is_empty() && let Some(body) = &msg.v1.as_ref().ok_or(RtmError::NoBody)?.body {
                                     update_presence_tx.send(body.clone()).await?;
                                 }

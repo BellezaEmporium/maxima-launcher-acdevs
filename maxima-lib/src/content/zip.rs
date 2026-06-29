@@ -7,6 +7,7 @@ use reqwest::header::ToStrError;
 use std::cmp;
 use std::string::FromUtf8Error;
 use thiserror::Error;
+use std::path::{Component, Path};
 
 /// This module is based on https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html
 
@@ -45,6 +46,8 @@ pub enum EntryError {
     Decode,
     #[error("invalid signature `{0:#10x}` (expected `{sig:#10x}`)", sig = ZIP_FILE_HEADER_SIGNATURE)]
     Signature(u32),
+    #[error("path traversal detected: {0}")]
+    PathTraversal(String),
 }
 
 #[derive(Error, Debug)]
@@ -93,6 +96,19 @@ fn signature_scan_rev(data: &[u8], signature: u32) -> Option<usize> {
     }
 
     None
+}
+
+fn validate_entry_name(name: &str) -> Result<(), EntryError> {
+    let p = Path::new(name);
+    if p.is_absolute() {
+        return Err(EntryError::PathTraversal(name.to_string()));
+    }
+    for component in p.components() {
+        if component == Component::ParentDir {
+            return Err(EntryError::PathTraversal(name.to_string()));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -171,6 +187,7 @@ impl ZipFileEntry {
             }
             s.to_string()
         };
+        validate_entry_name(&entry.name)?;
         entry.extra_field = data.read_bytes(extra_field_len as usize)?;
 
         if let Ok(data) = entry.extra_field(0x01) {

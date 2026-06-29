@@ -1,31 +1,30 @@
 use std::{io::Write, num::Wrapping, str};
 
-use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyInit, block_padding::Pkcs7};
 use chrono::Datelike;
 use hex;
 
-const CRYPTO_KEY: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+use crate::util::lsx_crypto::Crypto;
 
-type Aes128EcbEnc = ecb::Encryptor<aes::Aes128>;
-type Aes128EcbDec = ecb::Decryptor<aes::Aes128>;
+const CRYPTO_KEY: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 const PRIME_10K: u32 = 104729;
 const PRIME_20K: u32 = 224737;
 const PRIME_30K: u32 = 350377;
 
-pub fn simple_decrypt(data: &[u8], key: &[u8; 16]) -> String {
-    let data = get_array(str::from_utf8(data).unwrap());
-
-    let res = Aes128EcbDec::new(&(*key).into())
-        .decrypt_padded_vec::<Pkcs7>(&data)
-        .unwrap();
-
-    String::from_utf8(res).unwrap()
+/// Encrypt data with AES-128-ECB-PKCS7, return hex string.
+pub fn simple_encrypt(data: &[u8], key: &[u8; 16]) -> String {
+    let mut crypto = Crypto::new(0); // seed=0 gives identity key 00..0f
+    crypto.key = *key;
+    let ct = crypto.encrypt(std::str::from_utf8(data).unwrap_or("")).unwrap_or_default();
+    hex::encode(ct)
 }
 
-pub fn simple_encrypt(data: &[u8], key: &[u8; 16]) -> String {
-    let res = Aes128EcbEnc::new(&(*key).into()).encrypt_padded_vec::<Pkcs7>(data);
-    hex::encode(res)
+/// Decrypt hex-encoded AES-128-ECB-PKCS7 data.
+pub fn simple_decrypt(data: &[u8], key: &[u8; 16]) -> String {
+    let ciphertext = hex::decode(data).unwrap_or_default();
+    let mut crypto = Crypto::new(0);
+    crypto.key = *key;
+    crypto.decrypt(&ciphertext).unwrap_or_default()
 }
 
 pub fn check_challenge_response(response: &str, challenge: &str) -> bool {
@@ -47,8 +46,8 @@ pub fn make_lsx_key(seed: u16) -> [u8; 16] {
     crand.seed(seed);
 
     let mut result: [u8; 16] = [0; 16];
-    for item in &mut result {
-        *item = crand.rand() as u8;
+    for i in 0..16 {
+        result[i] = crand.rand() as u8;
     }
     result
 }

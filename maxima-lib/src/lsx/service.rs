@@ -1,7 +1,7 @@
-use std::{io::ErrorKind, net::TcpListener, time::Duration};
+use std::{io::ErrorKind, time::Duration};
 
 use log::{info, warn};
-use tokio::time::sleep;
+use tokio::{time::sleep, net::TcpListener};
 
 use crate::lsx::connection::LSXConnectionError;
 use crate::{core::LockedMaxima, lsx::connection::Connection};
@@ -18,8 +18,7 @@ pub enum LSXServerError {
 pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServerError> {
     let addr = "127.0.0.1:".to_string() + port.to_string().as_str();
 
-    let listener = TcpListener::bind(&addr)?;
-    listener.set_nonblocking(true)?;
+    let listener = TcpListener::bind(&addr).await?;
     info!("Listening on: {}", addr);
 
     let mut connections: Vec<Connection> = Vec::new();
@@ -46,7 +45,7 @@ pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServ
             idx += 1;
         }
 
-        let (socket, addr) = match listener.accept() {
+        let (socket, addr) = match listener.accept().await {
             Ok(s) => s,
             Err(err) => {
                 let kind = err.kind();
