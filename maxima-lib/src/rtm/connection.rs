@@ -128,11 +128,16 @@ impl RtmConnectionManager {
                                     expected_size = bytes.get_i32();
                                 }
 
+                                if expected_size <= 0 || expected_size as usize > 4 * 1024 * 1024 {
+                                    warn!("Invalid RTM frame size: {}", expected_size);
+                                    break;
+                                }
+
                                 if bytes.len() < expected_size as usize {
                                     break;
                                 }
 
-                                let buf = bytes.clone().freeze().slice(0..expected_size as usize);
+                                let buf = bytes.split_to(expected_size as usize).freeze();
                                 let msg = Communication::decode(buf)?;
                                 let id = &msg.v1.as_ref().ok_or(RtmError::NoBody)?.request_id;
 

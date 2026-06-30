@@ -126,7 +126,7 @@ impl ConnectionState {
         self.maxima.lock().await
     }
 
-    pub fn maxima_arc(&mut self) -> LockedMaxima {
+    pub fn maxima_arc(&self) -> LockedMaxima {
         self.maxima.clone()
     }
 
@@ -355,7 +355,10 @@ impl Connection {
                 LSXMessageType::Request(msg) => {
                     Connection::process_request_message(&state, msg).await
                 }
-                LSXMessageType::Response(_) => unimplemented!(),
+                LSXMessageType::Response(_) => {
+                    warn!("Unexpected LSX Response message received, ignoring");
+                    Ok(None)
+                }
             };
 
             let reply: Option<LSXMessageType> = match reply {
@@ -397,11 +400,13 @@ impl Connection {
         message: LSXRequest,
     ) -> Result<Option<LSXMessageType>, LSXConnectionError> {
         {
-            let pid = *state.read().await.pid();
-            state
-                .write()
-                .await
-                .maxima()
+            let (maxima_arc, pid) = {
+                let s = state.read().await;
+                (s.maxima_arc(), *s.pid())
+            };
+
+            maxima_arc
+                .lock()
                 .await
                 .call_event(MaximaEvent::ReceivedLSXRequest(pid, message.value.clone()));
         }

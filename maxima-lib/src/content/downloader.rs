@@ -30,10 +30,10 @@ use tokio::{
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
-fn zstate_path(id: &str, path: &str) -> Result<PathBuf, DownloaderError> {
+async fn zstate_path(id: &str, path: &str) -> Result<PathBuf, DownloaderError> {
     let mut path = maxima_dir()?.join("temp/downloader").join(id).join(path);
     path.set_extension("eazstate");
-    std::fs::create_dir_all(path.safe_parent()?)?;
+    tokio::fs::create_dir_all(path.safe_parent()?).await?;
     Ok(path)
 }
 
@@ -150,7 +150,7 @@ impl DownloadDecoder for NoopDecoder {
 struct AsyncWriterWrapper<'a> {
     id: String,
     path: String,
-    zlib_state_file: std::fs::File,
+    zlib_state_file: tokio::fs::File,
     decoder: &'a mut Box<dyn DownloadDecoder>,
     inner: Arc<Mutex<BufWriter<File>>>,
 }
@@ -165,11 +165,11 @@ impl<'a> AsyncWriterWrapper<'a> {
         Ok(AsyncWriterWrapper {
             id: id.to_owned(),
             path: path.to_owned(),
-            zlib_state_file: std::fs::OpenOptions::new()
+            zlib_state_file: tokio::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .open(zstate_path(&id, &path)?)?,
+                .open(zstate_path(&id, &path).await?).await?,
             decoder,
             inner,
         })
@@ -536,7 +536,7 @@ impl ZipDownloader {
         };
 
         if state == EntryDownloadState::Resumable {
-            let state_file = zstate_path(&self.id, entry.name())?;
+            let state_file = zstate_path(&self.id, entry.name()).await?;
             if state_file.exists() {
                 let mut buf = Bytes::from(tokio::fs::read(state_file).await?);
                 decoder.restore_state(&mut buf);
