@@ -1,12 +1,16 @@
 #![allow(non_snake_case)]
 
-use log::debug;
+use log::{debug, error, warn};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2_const;
 use std::fmt;
+use std::sync::Arc;
+use std::time::Duration;
 use thiserror::Error;
+use tokio::sync::{Mutex, Semaphore};
+use tokio::time::{sleep, Instant};
 
 use derive_builder::Builder;
 use derive_getters::Getters;
@@ -48,6 +52,12 @@ pub enum ServiceLayerError {
     #[error("HTTP {status_code:?}: `{message}`")]
     Http {
         status_code: StatusCode,
+        message: String,
+    },
+    #[error("Rate-limited or forbidden on `{operation}` after {retries} retries: `{message}`")]
+    RateLimit {
+        operation: String,
+        retries: u32,
         message: String,
     },
     #[error("GraphQL error in operation `{operation}`: `{error:?}`")]
@@ -139,6 +149,9 @@ define_graphql_request!(ContentfulProxy, GetHeroBackgroundImage, gameHubCollecti
 pub struct ServiceLayerClient {
     auth: LockedAuthStorage,
     client: Client,
+    semaphore: Arc<Semaphore>,
+    last_request: Arc<Mutex<Option<Instant>>>,
+    min_request_interval: Duration,
 }
 
 impl ServiceLayerClient {
@@ -146,6 +159,9 @@ impl ServiceLayerClient {
         Self {
             auth,
             client: Client::new(),
+            semaphore: Arc::new(Semaphore::new(3)),
+            last_request: Arc::new(Mutex::new(None)),
+            min_request_interval: Duration::from_millis(100),
         }
     }
 
@@ -169,6 +185,84 @@ impl ServiceLayerClient {
     }
 
     async fn request2<T, R>(
+        &self,
+        operation: &ServiceLayerGraphQLRequest,
+        variables: T,
+        full_query: bool,
+    ) -> Result<R, ServiceLayerError>
+    where
+        T: Serialize,
+        R: for<'a> Deserialize<'a>,
+    {
+        const MAX_RETRIES: u32 = 3;
+        const BASE_DELAY_MS: u64 = 500;
+
+        let _permit = self.semaphore.acquire().await.map_err(|_| {
+            ServiceLayerError::Http {
+                status_code: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "semaphore closed".to_string(),
+            }
+        })?;
+
+        // Enforce minimum interval between requests without holding a lock across await
+        let wait = {
+            let mut last = self.last_request.lock().await;
+            let now = Instant::now();
+            let wait = last.map(|instant| {
+                let elapsed = instant.elapsed();
+                if elapsed < self.min_request_interval {
+                    self.min_request_interval - elapsed
+                } else {
+                    Duration::ZERO
+                }
+            });
+            *last = Some(now + wait.unwrap_or(Duration::ZERO));
+            wait
+        };
+        if let Some(duration) = wait {
+            if duration > Duration::ZERO {
+                sleep(duration).await;
+            }
+        }
+
+        let mut last_error = None;
+
+        for attempt in 0..=MAX_RETRIES {
+            match self.do_request(operation, &variables, full_query).await {
+                Ok(res) => return Ok(res),
+                Err(err) => {
+                    let should_retry = matches!(
+                        &err,
+                        ServiceLayerError::Http { status_code, .. }
+                            if *status_code == StatusCode::TOO_MANY_REQUESTS
+                    );
+
+                    if should_retry && attempt < MAX_RETRIES {
+                        let delay = Duration::from_millis(BASE_DELAY_MS * 2u64.pow(attempt));
+                        warn!(
+                            "Request `{}` returned {}; waiting {:?} before retry {}/{}",
+                            operation.operation,
+                            match &err {
+                                ServiceLayerError::Http { status_code, .. } => status_code.to_string(),
+                                _ => "error".to_string(),
+                            },
+                            delay,
+                            attempt + 1,
+                            MAX_RETRIES
+                        );
+                        sleep(delay).await;
+                        last_error = Some(err);
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| ServiceLayerError::NoData))
+    }
+
+    async fn do_request<T, R>(
         &self,
         operation: &ServiceLayerGraphQLRequest,
         variables: T,
@@ -237,34 +331,37 @@ impl ServiceLayerClient {
         );
 
         let result = serde_json::from_str::<Value>(text.as_str())?;
-        let errors = result.get("errors");
-        if let Some(errors) = errors {
-            let errors = errors.as_array().unwrap();
-            let error = if let Value::Object(o) = &errors[0] {
-                o
-            } else {
-                return Err(ServiceLayerError::GraphQL {
-                    operation: operation.operation.to_string(),
-                    error: None,
-                });
-            };
+        if let Some(errors) = result.get("errors") {
+            let message = errors
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|first| first.get("message"))
+                .and_then(|msg| msg.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| errors.to_string());
 
             return Err(ServiceLayerError::GraphQL {
                 operation: operation.operation.to_string(),
-                error: error.get("message").map(|error| error.to_string())
+                error: Some(message),
             });
         }
 
         let data = result
             .get("data")
             .ok_or(ServiceLayerError::NoData)?
-            .as_object()
-            .ok_or(ServiceLayerError::NoData)?
             .get(operation.key)
-            .ok_or(ServiceLayerError::NoData)?
-            .to_owned();
-
-        Ok(serde_json::from_value::<R>(data)?)
+            .ok_or_else(|| ServiceLayerError::MissingField)?
+            .clone();
+        Ok(serde_json::from_value::<R>(data).map_err(|err| {
+            error!(
+                "Failed to deserialize response for operation `{}` (key `{}`): {}. Response data: {}",
+                operation.operation,
+                operation.key,
+                err,
+                result.get("data").unwrap_or(&Value::Null)
+            );
+            err
+        })?)
     }
 }
 

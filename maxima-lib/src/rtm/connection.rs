@@ -149,7 +149,6 @@ impl RtmConnectionManager {
                                     update_presence_tx.send(body.clone()).await?;
                                 }
 
-                                bytes.advance(expected_size as usize);
                                 expected_size = -1;
                             }
                         },

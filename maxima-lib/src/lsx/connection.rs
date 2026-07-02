@@ -1,12 +1,11 @@
 use derive_getters::Getters;
-use lazy_static::lazy_static;
 use log::{debug, error, warn};
 use quick_xml::DeError;
 use regex::Regex;
 use std::{
     io::{ErrorKind, Read, Write},
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 use sysinfo::{Pid, System};
 use thiserror::Error;
@@ -78,9 +77,9 @@ const CORE_SENDER: &str = "EALS";
 const CHALLENGE_BUILD: &str = "release";
 //const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb"; // Need to figure out how to generate this
 const CHALLENGE_VERSION: &str = "10,5,64,37936";
-lazy_static! {
-    static ref LSX_PATTERN: Regex = Regex::new(r"<LSX>.*?</LSX>").unwrap();
-}
+static LSX_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"<LSX>.*?</LSX>").expect("LSX pattern regex should be valid")
+});
 
 macro_rules! lsx_message_matcher {
     (

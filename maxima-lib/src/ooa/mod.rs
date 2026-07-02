@@ -1,8 +1,12 @@
 use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
 use chrono::{DateTime, Duration, Utc};
 use log::{debug, warn};
-use std::string::FromUtf8Error;
-use std::{fs::create_dir_all, path::PathBuf};
+use std::{
+    fs::create_dir_all,
+    path::PathBuf,
+    string::FromUtf8Error,
+    sync::LazyLock,
+};
 use tokio::fs;
 
 use base64::{DecodeError, Engine, engine::general_purpose};
@@ -11,7 +15,6 @@ use crate::core::{auth::hardware::HardwareInfo, endpoints::API_PROXY_NOVAFUSION_
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
 use crate::util::native::{NativeError, SafeParent};
-use lazy_static::lazy_static;
 use quick_xml::DeError;
 use regex::Regex;
 use reqwest::header::ToStrError;
@@ -26,12 +29,12 @@ pub const OOA_CRYPTO_KEY: [u8; 16] = [
 type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
-lazy_static! {
-    static ref EMAIL_PATTERN: Regex = Regex::new(
+static EMAIL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
         r"^([a-z0-9_+]([a-z0-9_+.]*[a-z0-9_+])?)@([a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,6})"
     )
-    .unwrap();
-}
+    .expect("email regex should be valid")
+});
 
 const LICENSE_PATH: &str = "ProgramData/Electronic Arts/EA Services/License";
 

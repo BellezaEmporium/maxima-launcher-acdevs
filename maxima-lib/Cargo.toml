@@ -20,8 +20,7 @@ serde_json = { workspace = true }
 quick-xml = { version = "0.41.0", features = ["serialize"] }
 pastey = "0.2.3"
 hex = { workspace = true }
-lazy_static = { workspace = true }
-reqwest = { workspace = true, features = ["form", "gzip", "json"] }
+reqwest = { workspace = true, features = ["form", "query", "gzip", "json"] }
 base64 = { workspace = true }
 base62 = "2.2.4"
 log = { workspace = true }
@@ -45,7 +44,7 @@ derive-getters = "0.5.0"
 derive_builder = "0.20.2"
 mac_address = "1.1.8"
 filetime = "0.2.29"
-rand = "0.10.1"
+rand = "0.10.2"
 ring = "0.17.14"
 futures = { workspace = true }
 prost = "0.14.4"
@@ -71,7 +70,7 @@ thiserror = { workspace = true }
 url = { workspace = true }
 http = "1.4.2"
 generic-array = "1.4.3"
-rustls-pki-types = "1.14.1"
+rustls-pki-types = "1.15.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = [

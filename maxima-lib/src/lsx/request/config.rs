@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 
 use crate::{
     lsx::{
@@ -9,8 +9,8 @@ use crate::{
     make_lsx_handler_response,
 };
 
-lazy_static! {
-    static ref SERVICES: Vec<LSXService> = vec![
+static SERVICES: LazyLock<Vec<LSXService>> = LazyLock::new(|| {
+    vec![
         LSXService::new("EbisuSDK", "SDK"),
         LSXService::new("EbisuSDK", "PROFILE"),
         LSXService::new("XMPP", "PRESENCE"),
@@ -45,17 +45,14 @@ lazy_static! {
         LSXService::new("PI", "PROGRESSIVE_INSTALLATION"),
         LSXService::new("PI", "PROGRESSIVE_INSTALLATION_EVENT"),
         LSXService::new("EbisuSDK", "CONTENT"),
-    ];
-}
+    ]
+});
 
 pub async fn handle_config_request(
     _: LockedConnectionState,
     _: LSXGetConfig,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
-    let mut services: Vec<LSXService> = Vec::new();
-    for service in SERVICES.iter() {
-        services.push(service.clone());
-    }
+    let services = &SERVICES;
 
-    return make_lsx_handler_response!(Response, GetConfigResponse, { service: services })
+    return make_lsx_handler_response!(Response, GetConfigResponse, { service: services.to_vec() })
 }

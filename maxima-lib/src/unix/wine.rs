@@ -9,7 +9,6 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
-use lazy_static::lazy_static;
 use log::{info, warn};
 use regex::Regex;
 use reqwest::StatusCode;
@@ -28,9 +27,9 @@ use crate::util::{
     registry::RegistryError,
 };
 
-lazy_static! {
-    static ref PROTON_PATTERN: Regex = Regex::new(r"GE-Proton\d+-\d+\.tar\.gz").unwrap();
-}
+static PROTON_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"GE-Proton\d+-\d+\.tar\.gz").expect("proton pattern regex should be valid")
+});
 
 // A Proton verb to use
 pub enum CommandType {
@@ -309,7 +308,7 @@ pub(crate) async fn install_wine() -> Result<(), NativeError> {
     let asset = match release
         .assets
         .iter()
-        .find(|x| PROTON_PATTERN.captures(&x.name).is_some())
+        .find(|x| PROTON_PATTERN.is_match(&x.name))
     {
         Some(asset) => asset,
         None => return Err(NativeError::Wine(WineError::Fetch)),
@@ -437,9 +436,9 @@ pub async fn setup_wine_registry() -> Result<(), NativeError> {
 
 pub type WineRegistry = HashMap<String, String>;
 
-lazy_static! {
-    static ref MX_WINE_REGISTRY: Mutex<WineRegistry> = Mutex::new(WineRegistry::new());
-}
+static MX_WINE_REGISTRY: LazyLock<Mutex<WineRegistry>> = LazyLock::new(|| {
+    Mutex::new(WineRegistry::new())
+});
 
 async fn parse_wine_registry(file_path: &str) -> WineRegistry {
     let mut registry_map = MX_WINE_REGISTRY.lock().await;

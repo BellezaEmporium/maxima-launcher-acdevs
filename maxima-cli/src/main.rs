@@ -2,11 +2,10 @@ use clap::{Parser, Subcommand};
 
 use anyhow::{Result, bail};
 use inquire::{Select, Text};
-use lazy_static::lazy_static;
 use log::{debug, error, info, warn};
 use regex::Regex;
 
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use std::{path::PathBuf, sync::{Arc, LazyLock}, time::Instant};
 
 #[cfg(windows)]
 use is_elevated::is_elevated;
@@ -47,9 +46,9 @@ use maxima::{
     util::{log::init_logger, native::take_foreground_focus, registry::check_registry_validity},
 };
 
-lazy_static! {
-    static ref MANUAL_LOGIN_PATTERN: Regex = Regex::new(r"^(.*):(.*)$").unwrap();
-}
+static MANUAL_LOGIN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(.*):(.*)$").expect("manual login regex should be valid")
+});
 
 #[derive(Subcommand, Debug)]
 enum Mode {

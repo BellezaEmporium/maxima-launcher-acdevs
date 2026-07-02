@@ -1,17 +1,17 @@
 use base64::{Engine, engine::general_purpose};
-use lazy_static::lazy_static;
 use log::debug;
 use regex::Regex;
 use serde::Serialize;
+use std::sync::LazyLock;
 
 use crate::{
     unix::wine::{CommandType, run_wine_command},
     util::native::{NativeError, SafeParent, SafeStr, module_path},
 };
 
-lazy_static! {
-    static ref PID_PATTERN: Regex = Regex::new(r"wine-helper: PID (.*)").unwrap();
-}
+static PID_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"wine-helper: PID (.*)").expect("PID pattern regex should be valid")
+});
 
 #[derive(Default, Serialize)]
 pub struct WineGetPidArgs {
