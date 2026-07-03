@@ -156,7 +156,6 @@ fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
     String::from_utf16(&u16_bytes).ok()
 }
 
-
 impl PreDiPManifest {
     pub async fn read(path: &Path) -> Result<Self, ManifestError> {
         let bytes = tokio::fs::read(path).await?;
@@ -168,12 +167,29 @@ impl PreDiPManifest {
         &self.attr_gameVersion
     }
 
-    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<String>, ManifestError> {
+    pub fn locale(&self) -> &str {
+        self.metadata
+            .localeInfo
+            .iter()
+            .find(|l| l.attr_locale == "en_US")
+            .map(|l| l.attr_locale.as_str())
+            .or_else(|| {
+                self.metadata
+                    .localeInfo
+                    .first()
+                    .map(|l| l.attr_locale.as_str())
+            })
+            .unwrap_or("en_US")
+    }
+
+    fn collect_touchup_args(
+        &self,
+        install_path: &Path,
+        locale: &str,
+    ) -> Result<Vec<String>, ManifestError> {
         let install_str = platform_path(
-            remove_trailing_backslash(
-                install_path.to_str().ok_or(ManifestError::Decode)?
-            )
-            .replace('/', "\\"),
+            remove_trailing_backslash(install_path.to_str().ok_or(ManifestError::Decode)?)
+                .replace('/', "\\"),
         )
         .to_str()
         .ok_or(ManifestError::Decode)?
@@ -182,7 +198,7 @@ impl PreDiPManifest {
         let expanded = self
             .executable
             .parameters
-            .replace("{locale}", "en_US")
+            .replace("{locale}", locale)
             .replace("{installLocation}", &install_str);
 
         Self::split_args(&expanded)
@@ -233,9 +249,9 @@ impl PreDiPManifest {
         let install_path = PathBuf::from(remove_trailing_slash(
             install_path.to_str().ok_or(ManifestError::Decode)?,
         ));
-        let args = self.collect_touchup_args(&install_path)?;
+        let args = self.collect_touchup_args(&install_path, self.locale())?;
         let path = case_insensitive_path(
-            install_path.join(remove_leading_slash(&self.executable.filePath))
+            install_path.join(remove_leading_slash(&self.executable.filePath)),
         );
 
         run_wine_command(path, Some(args), None, true, CommandType::Run).await?;
@@ -248,14 +264,10 @@ impl PreDiPManifest {
         use crate::util::native::NativeError;
         use tokio::process::Command;
 
-        let args = self.collect_touchup_args(install_path)?;
+        let args = self.collect_touchup_args(install_path, self.locale())?;
         let path = install_path.join(remove_leading_slash(&self.executable.filePath));
 
-        let status = Command::new(&path)
-            .args(&args)
-            .spawn()?
-            .wait()
-            .await?;
+        let status = Command::new(&path).args(&args).spawn()?.wait().await?;
 
         if !status.success() {
             return Err(ManifestError::Native(NativeError::Command(

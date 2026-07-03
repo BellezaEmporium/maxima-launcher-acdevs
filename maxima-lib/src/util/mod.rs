@@ -1,12 +1,12 @@
 pub mod github;
 pub mod hash;
 pub mod log;
+pub mod lsx_crypto;
 pub mod native;
 pub mod registry;
 pub mod simple_crypto;
 pub mod system_profiler_utils;
 pub mod wmi_utils;
-pub mod lsx_crypto;
 
 #[cfg(windows)]
 pub mod dll_injector;

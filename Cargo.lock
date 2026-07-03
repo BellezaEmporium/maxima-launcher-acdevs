@@ -452,17 +452,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-recursion"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1014,12 +1003,6 @@ dependencies = [
  "owo-colors",
  "tracing-error",
 ]
-
-[[package]]
-name = "color-hex"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecdffb913a326b6c642290a0d0ec8e8d6597291acdc07cc4c9cb4b3635d44cf9"
 
 [[package]]
 name = "color-spantrace"
@@ -1617,7 +1600,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6758be723a3f298bbfda4db75748bc2ba0abafe096b6383c7c32da264764fbc3"
 dependencies = [
  "bytemuck",
- "color-hex",
  "emath",
  "serde",
 ]
@@ -1700,18 +1682,6 @@ dependencies = [
  "web-time",
  "webbrowser",
  "winit",
-]
-
-[[package]]
-name = "egui_demo_lib"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9579c0df7fe5a6bff816f49b4500390737c33a63fd9a09f5edcbeeb261c2f6ef"
-dependencies = [
- "egui",
- "egui_extras",
- "log",
- "unicode_names2",
 ]
 
 [[package]]
@@ -3346,8 +3316,8 @@ dependencies = [
  "tokio",
  "url",
  "urlencoding",
- "winapi",
  "windows-service",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 
@@ -3368,7 +3338,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "winapi",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 
@@ -3378,7 +3348,6 @@ version = "1.0.0"
 dependencies = [
  "aes",
  "async-compression",
- "async-recursion",
  "async-trait",
  "base62",
  "base64",
@@ -3429,6 +3398,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
+ "tokio-stream",
  "tokio-util",
  "toml 1.1.2+spec-1.1.0",
  "ureq",
@@ -3436,8 +3406,8 @@ dependencies = [
  "uuid",
  "webpki-roots",
  "widestring",
- "winapi",
  "windows-service",
+ "windows-sys 0.61.2",
  "winreg",
  "wmi",
  "xz2",
@@ -3471,8 +3441,8 @@ dependencies = [
  "structured-logger",
  "thiserror 2.0.18",
  "tokio",
- "winapi",
  "windows-service",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 
@@ -3484,7 +3454,6 @@ dependencies = [
  "base64",
  "clap",
  "color-eyre",
- "futures",
  "inquire",
  "is_elevated",
  "log",
@@ -3496,7 +3465,8 @@ dependencies = [
  "serde_json",
  "strum",
  "tokio",
- "winapi",
+ "tokio-stream",
+ "windows-sys 0.61.2",
  "winreg",
 ]
 
@@ -3508,7 +3478,6 @@ dependencies = [
  "clap",
  "eframe",
  "egui",
- "egui_demo_lib",
  "egui_extras",
  "fuzzy-matcher",
  "humansize",
@@ -3528,7 +3497,7 @@ dependencies = [
  "sys-locale",
  "thiserror 2.0.18",
  "tokio",
- "winapi",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4951,8 +4920,6 @@ version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
- "libc",
- "rand_chacha 0.3.1",
  "rand_core 0.6.4",
 ]
 
@@ -4962,7 +4929,7 @@ version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
- "rand_chacha 0.9.0",
+ "rand_chacha",
  "rand_core 0.9.5",
 ]
 
@@ -4975,16 +4942,6 @@ dependencies = [
  "chacha20",
  "getrandom 0.4.3",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "rand_chacha"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
-dependencies = [
- "ppv-lite86",
- "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -5002,9 +4959,6 @@ name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
-dependencies = [
- "getrandom 0.2.17",
-]
 
 [[package]]
 name = "rand_core"
@@ -5150,7 +5104,7 @@ dependencies = [
  "paste",
  "profiling",
  "rand 0.9.4",
- "rand_chacha 0.9.0",
+ "rand_chacha",
  "simd_helpers",
  "thiserror 2.0.18",
  "v_frame",
@@ -6412,6 +6366,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-stream"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6659,26 +6624,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "unicode_names2"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82c3e18d850bb6ebd57735e5654f0af65e572b05c2397e7b2b1a7c6a792cc29c"
-dependencies = [
- "phf",
- "unicode_names2_generator",
-]
-
-[[package]]
-name = "unicode_names2_generator"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "849744a58c479122ff24910d7ca57f312b62613ef0412dc327776ae6b235d16a"
-dependencies = [
- "phf_codegen",
- "rand 0.8.6",
-]
 
 [[package]]
 name = "untrusted"

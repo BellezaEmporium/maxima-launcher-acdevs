@@ -144,23 +144,29 @@ async fn handle_images(
 
     if !has_hero {
         if let Some(hero) = get_preferred_hero_image(&images_0).await {
-            channel.send(UIImageCacheLoaderCommand::ProvideRemote(
-                crate::ui_image::UIImageType::Hero(slug.clone()),
-                hero,
-            )).ok();
+            channel
+                .send(UIImageCacheLoaderCommand::ProvideRemote(
+                    crate::ui_image::UIImageType::Hero(slug.clone()),
+                    hero,
+                ))
+                .ok();
         }
     }
 
     if !has_logo {
         if let Some(logo) = get_logo_image(&images_0) {
-            channel.send(UIImageCacheLoaderCommand::ProvideRemote(
-                crate::ui_image::UIImageType::Logo(slug.clone()),
-                logo,
-            )).ok();
+            channel
+                .send(UIImageCacheLoaderCommand::ProvideRemote(
+                    crate::ui_image::UIImageType::Logo(slug.clone()),
+                    logo,
+                ))
+                .ok();
         } else {
-            channel.send(UIImageCacheLoaderCommand::Stub(
-                crate::ui_image::UIImageType::Logo(slug.clone()),
-            )).ok();
+            channel
+                .send(UIImageCacheLoaderCommand::Stub(
+                    crate::ui_image::UIImageType::Logo(slug.clone()),
+                ))
+                .ok();
         }
     }
 
@@ -174,10 +180,12 @@ async fn handle_images(
 
     if !has_background {
         if let Some(background_image) = get_preferred_bg_hero(&images_1) {
-            channel.send(UIImageCacheLoaderCommand::ProvideRemote(
-                crate::ui_image::UIImageType::Background(slug),
-                background_image,
-            )).ok();
+            channel
+                .send(UIImageCacheLoaderCommand::ProvideRemote(
+                    crate::ui_image::UIImageType::Background(slug),
+                    background_image,
+                ))
+                .ok();
         }
     }
 
@@ -215,7 +223,10 @@ pub async fn get_games_request(
             match downloads.iter().find(|item| item.download_type() == "LIVE") {
                 Some(item) => item,
                 None => {
-                    error!("Cannot find LIVE download for game with multiple downloads: {}", &slug);
+                    error!(
+                        "Cannot find LIVE download for game with multiple downloads: {}",
+                        &slug
+                    );
                     continue;
                 }
             }
@@ -249,10 +260,14 @@ pub async fn get_games_request(
             exe_override: String::new(),
         };
 
-        channel.send(MaximaLibResponse::GameInfoResponse(InteractThreadGameListResponse {
-            game: game_info,
-            settings,
-        })).ok();
+        channel
+            .send(MaximaLibResponse::GameInfoResponse(
+                InteractThreadGameListResponse {
+                    game: game_info,
+                    settings,
+                },
+            ))
+            .ok();
 
         let bg = maxima_dir()?.join("cache/ui/images/").join(&slug).join("background.jpg");
         let game_hero = maxima_dir()?.join("cache/ui/images/").join(&slug).join("hero.jpg");
@@ -279,9 +294,10 @@ pub async fn get_games_request(
                     has_background,
                     channel_send,
                     service_layer_send,
-                ).await;
+                )
+                .await;
             });
-        tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
         }
 
         egui::Context::request_repaint(&ctx);

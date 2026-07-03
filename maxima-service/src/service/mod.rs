@@ -6,10 +6,10 @@ use maxima::util::registry::set_up_registry;
 use maxima::util::service::SERVICE_NAME;
 use std::ffi::OsString;
 use std::path::Path;
-use tokio::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 use structured_logger::json::new_writer;
+use tokio::sync::mpsc::{self, Receiver};
 use windows_service::service::{
     ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
 };

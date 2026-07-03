@@ -5,7 +5,11 @@ use inquire::{Select, Text};
 use log::{debug, error, info, warn};
 use regex::Regex;
 
-use std::{path::PathBuf, sync::{Arc, LazyLock}, time::Instant};
+use std::{
+    path::PathBuf,
+    sync::{Arc, LazyLock},
+    time::Instant,
+};
 
 #[cfg(windows)]
 use is_elevated::is_elevated;
@@ -46,9 +50,8 @@ use maxima::{
     util::{log::init_logger, native::take_foreground_focus, registry::check_registry_validity},
 };
 
-static MANUAL_LOGIN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(.*):(.*)$").expect("manual login regex should be valid")
-});
+static MANUAL_LOGIN_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(.*):(.*)$").expect("manual login regex should be valid"));
 
 #[derive(Subcommand, Debug)]
 enum Mode {

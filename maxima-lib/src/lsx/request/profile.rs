@@ -39,20 +39,20 @@ pub async fn handle_profile_request(
     debug!("Got profile for {} {:?}", &name, path);
 
     return make_lsx_handler_response!(Response, GetProfileResponse, {
-       attr_Persona: name.to_owned(),
-       attr_SubscriberLevel: 0,
-       attr_CommerceCurrency: "USD".to_string(),
-       attr_IsTrialSubscriber: false,
-       attr_Country: "US".to_string(),
-       attr_UserId: user.id().parse::<u64>()?,
-       attr_GeoCountry: "US".to_string(),
-       attr_AvatarId: path.safe_str()?.to_string(),
-       attr_IsSubscriber: false,
-       attr_IsSteamSubscriber: false,
-       attr_PersonaId: player.psd().parse::<u64>()?,
-       attr_IsUnderAge: false,
-         attr_UserIndex: 0,
-     });
+      attr_Persona: name.to_owned(),
+      attr_SubscriberLevel: 0,
+      attr_CommerceCurrency: "USD".to_string(),
+      attr_IsTrialSubscriber: false,
+      attr_Country: "US".to_string(),
+      attr_UserId: user.id().parse::<u64>()?,
+      attr_GeoCountry: "US".to_string(),
+      attr_AvatarId: path.safe_str()?.to_string(),
+      attr_IsSubscriber: false,
+      attr_IsSteamSubscriber: false,
+      attr_PersonaId: player.psd().parse::<u64>()?,
+      attr_IsUnderAge: false,
+        attr_UserIndex: 0,
+    });
 }
 
 pub async fn handle_presence_request(
@@ -60,17 +60,17 @@ pub async fn handle_presence_request(
     _: LSXGetPresence,
 ) -> Result<Option<LSXResponseType>, LSXRequestError> {
     return make_lsx_handler_response!(Response, GetPresenceResponse, {
-       attr_UserId: 1005663144213,
-       attr_Presence: LSXPresence::Ingame,
-       attr_Title: None,
-       attr_TitleId: None,
-       attr_MultiplayerId: None,
-       attr_RichPresence: None,
-       attr_GamePresence: None,
-       attr_SessionId: None,
-         attr_Group: None,
-         attr_GroupId: None,
-     });
+      attr_UserId: 1005663144213,
+      attr_Presence: LSXPresence::Ingame,
+      attr_Title: None,
+      attr_TitleId: None,
+      attr_MultiplayerId: None,
+      attr_RichPresence: None,
+      attr_GamePresence: None,
+      attr_SessionId: None,
+        attr_Group: None,
+        attr_GroupId: None,
+    });
 }
 
 pub async fn handle_set_presence_request(
@@ -80,7 +80,8 @@ pub async fn handle_set_presence_request(
     info!(
         "Setting Presence to {:?}: {}",
         request.attr_Presence,
-        request.attr_RichPresence
+        request
+            .attr_RichPresence
             .to_owned()
             .unwrap_or(String::new())
     );

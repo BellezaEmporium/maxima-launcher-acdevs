@@ -1,7 +1,7 @@
 use crate::{
+    BackendStallState, GameDetails, GameDetailsWrapper, MaximaEguiApp,
     bridge_thread::{self, BackendError},
     views::downloads_view::QueuedDownload,
-    BackendStallState, GameDetails, GameDetailsWrapper, MaximaEguiApp,
 };
 use log::{error, info, warn};
 use tokio::sync::mpsc::error::TryRecvError;
@@ -29,9 +29,13 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                         app.user_name = res.you.display_name().clone();
                         app.user_id = res.you.id().clone();
                         app.backend_state = BackendStallState::BingChilling;
-                        let _ = app.backend.backend_commander
+                        let _ = app
+                            .backend
+                            .backend_commander
                             .send(bridge_thread::MaximaLibRequest::GetGamesRequest);
-                        let _ = app.backend.backend_commander
+                        let _ = app
+                            .backend
+                            .backend_commander
                             .send(bridge_thread::MaximaLibRequest::GetFriendsRequest);
                     }
                     LoginCacheEmpty => app.backend_state = BackendStallState::UserNeedsToLogIn,
@@ -60,8 +64,13 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                     NonFatalError(err) => app.nonfatal_errors.push(*err),
                     ActiveGameChanged(slug) => app.playing_game = slug,
                     LocateGameResponse(res) => {
-                        if matches!(res, bridge_thread::InteractThreadLocateGameResponse::Success) {
-                            let _ = app.backend.backend_commander
+                        if matches!(
+                            res,
+                            bridge_thread::InteractThreadLocateGameResponse::Success
+                        ) {
+                            let _ = app
+                                .backend
+                                .backend_commander
                                 .send(bridge_thread::MaximaLibRequest::GetGamesRequest);
                         }
                         app.installer_state.locate_response = Some(res);
@@ -102,6 +111,10 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                                 },
                             );
                         }
+                    }
+                    DownloadFailed(offer, reason) => {
+                        app.installing_now = None;
+                        app.nonfatal_errors.push(BackendError::DownloadFailed(offer, reason));
                     }
                 }
                 ctx.request_repaint();

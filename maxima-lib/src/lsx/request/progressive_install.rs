@@ -18,7 +18,7 @@ pub async fn handle_pi_availability_request(
     return make_lsx_handler_response!(Response, IsProgressiveInstallationAvailableResponse, {
         attr_Available: false,
         attr_ItemId: "Origin.OFR.50.0001456".to_string(),
-    })
+    });
 }
 
 pub async fn handle_pi_installed_chunks_request(
@@ -29,5 +29,5 @@ pub async fn handle_pi_installed_chunks_request(
         attr_ItemId: "Origin.OFR.50.0001456".to_string(),
         attr_Installed: true,
         chunk_ids: request.chunk_ids,
-    })
+    });
 }

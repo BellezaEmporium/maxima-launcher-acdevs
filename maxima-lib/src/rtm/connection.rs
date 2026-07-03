@@ -206,9 +206,7 @@ impl RtmConnectionManager {
                 .ok_or(RtmError::NoBody)?
                 .body
                 .ok_or(RtmError::NoBody)?),
-            Err(_) => Err(RtmError::Io(io::Error::other(
-                "Failed to receive response",
-            ))),
+            Err(_) => Err(RtmError::Io(io::Error::other("Failed to receive response"))),
         }
     }
 

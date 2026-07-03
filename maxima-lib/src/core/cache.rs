@@ -31,6 +31,8 @@ impl<K: Eq + Hash + Sync + Send + 'static> DynamicCache<K> {
         Q: Hash + Eq + ?Sized,
         T: Sync + Send + Clone + 'static,
     {
-        self.cache.get(key).map(|cached| (*cached.downcast::<T>().unwrap()).clone())
+        self.cache
+            .get(key)
+            .map(|cached| (*cached.downcast::<T>().unwrap()).clone())
     }
 }

@@ -436,9 +436,8 @@ pub async fn setup_wine_registry() -> Result<(), NativeError> {
 
 pub type WineRegistry = HashMap<String, String>;
 
-static MX_WINE_REGISTRY: LazyLock<Mutex<WineRegistry>> = LazyLock::new(|| {
-    Mutex::new(WineRegistry::new())
-});
+static MX_WINE_REGISTRY: LazyLock<Mutex<WineRegistry>> =
+    LazyLock::new(|| Mutex::new(WineRegistry::new()));
 
 async fn parse_wine_registry(file_path: &str) -> WineRegistry {
     let mut registry_map = MX_WINE_REGISTRY.lock().await;

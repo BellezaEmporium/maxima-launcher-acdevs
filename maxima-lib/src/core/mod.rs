@@ -74,6 +74,8 @@ pub enum MaximaEvent {
     ReceivedLSXRequest(u32, LSXRequestType),
     /// Offer ID. Use `maxima.mut_library().title_by_base_offer(id)` for details
     InstallFinished(String),
+    /// Offer ID, error message
+    InstallFailed(String, String),
 }
 
 pub type MaximaLSXEventCallback = extern "C" fn(*const c_char);
@@ -431,7 +433,9 @@ impl Maxima {
     }
 
     pub fn set_player_started(&mut self) {
-        if let Some(playing) = &mut self.playing { playing.set_started() }
+        if let Some(playing) = &mut self.playing {
+            playing.set_started()
+        }
     }
 
     /// Call this as often as possible from the loop you consume events from
@@ -455,11 +459,16 @@ impl Maxima {
         }
 
         let playing = self.playing.as_mut().unwrap();
-        if let Ok(None) = playing.process_mut().try_wait() { return }
+        if let Ok(None) = playing.process_mut().try_wait() {
+            return;
+        }
 
         info!("Game stopped");
 
-        if let Some(offer) = playing.offer() && *playing.cloud_saves() && offer.offer().has_cloud_save() {
+        if let Some(offer) = playing.offer()
+            && *playing.cloud_saves()
+            && offer.offer().has_cloud_save()
+        {
             let result = self
                 .cloud_sync
                 .obtain_lock(offer, CloudSyncLockMode::Write)

@@ -5,9 +5,9 @@ use log::{debug, warn};
 use reqwest::Client;
 use reqwest::header::ToStrError;
 use std::cmp;
+use std::path::{Component, Path};
 use std::string::FromUtf8Error;
 use thiserror::Error;
-use std::path::{Component, Path};
 
 /// This module is based on https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html
 

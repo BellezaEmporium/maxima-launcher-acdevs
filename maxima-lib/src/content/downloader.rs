@@ -169,7 +169,8 @@ impl<'a> AsyncWriterWrapper<'a> {
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .open(zstate_path(&id, &path).await?).await?,
+                .open(zstate_path(&id, &path).await?)
+                .await?,
             decoder,
             inner,
         })

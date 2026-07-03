@@ -3,14 +3,19 @@ use std::ffi::{CString, OsStr, OsString};
 use std::path::PathBuf;
 use std::time::Duration;
 use widestring::U16CString;
-use winapi::shared::sddl::{
-    ConvertSecurityDescriptorToStringSecurityDescriptorW,
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-};
-use winapi::um::winnt::{DACL_SECURITY_INFORMATION, LPWSTR, PSECURITY_DESCRIPTOR};
-use winapi::um::winsvc::{
-    OpenSCManagerA, OpenServiceA, QueryServiceObjectSecurity, SetServiceObjectSecurity,
-    SC_MANAGER_ALL_ACCESS, SERVICE_ALL_ACCESS,
+use windows_sys::Win32::{
+    Foundation::ERROR_INSUFFICIENT_BUFFER,
+    Security::{
+        Authorization::{
+            ConvertSecurityDescriptorToStringSecurityDescriptorW,
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+        },
+        DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+    },
+    System::Services::{
+        OpenSCManagerA, OpenServiceA, QueryServiceObjectSecurity, SetServiceObjectSecurity,
+        SC_MANAGER_ALL_ACCESS, SERVICE_ALL_ACCESS,
+    },
 };
 use windows_service::service::{
     ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceState, ServiceType,
@@ -79,13 +84,13 @@ pub fn register_service() -> Result<(), BackgroundServiceControlError> {
 pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlError> {
     let hscm = unsafe { OpenSCManagerA(
         std::ptr::null(),
-        CString::new("ServicesActive")?.as_ptr(),
+        CString::new("ServicesActive")?.as_ptr() as *const u8,
         SC_MANAGER_ALL_ACCESS,
     ) };
 
     let hservice = unsafe { OpenServiceA(
         hscm,
-        CString::new(SERVICE_NAME)?.as_ptr(),
+        CString::new(SERVICE_NAME)?.as_ptr() as *const u8,
         SERVICE_ALL_ACCESS,
     ) };
 
@@ -107,7 +112,7 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
         // The initial call failed; check if the error was related to buffer size
         let last_error = std::io::Error::last_os_error();
         let raw_error = (&last_error).raw_os_error().unwrap() as u32;
-        if raw_error != winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER {
+        if raw_error != ERROR_INSUFFICIENT_BUFFER {
             return Err(BackgroundServiceControlError::ServiceObjectSecurity(last_error));
         }
     }
@@ -132,7 +137,7 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
     }
 
     // Convert the security descriptor to a string
-    let mut sddl_string: LPWSTR = std::ptr::null_mut();
+    let mut sddl_string: *mut u16 = std::ptr::null_mut();
     let mut sddl_string_len: u32 = 0;
     let result = unsafe { ConvertSecurityDescriptorToStringSecurityDescriptorW(
         security_descriptor,

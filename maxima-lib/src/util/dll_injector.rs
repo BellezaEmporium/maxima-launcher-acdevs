@@ -1,17 +1,15 @@
-use std::ffi::CString;
+use std::ffi::{CString, c_void};
 use std::mem;
 use std::ptr;
 use thiserror::Error;
-use winapi::shared::minwindef::LPVOID;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::libloaderapi::{GetModuleHandleA, GetProcAddress};
-use winapi::um::memoryapi::{VirtualAllocEx, VirtualFreeEx, WriteProcessMemory};
-use winapi::um::processthreadsapi::{CreateRemoteThread, OpenProcess};
-use winapi::um::synchapi::WaitForSingleObject;
-use winapi::um::winbase::INFINITE;
-use winapi::um::winnt::{
-    HANDLE, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, PROCESS_ALL_ACCESS,
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, GetLastError, HANDLE},
+    System::Diagnostics::Debug::WriteProcessMemory,
+    System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
+    System::Memory::{
+        MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAllocEx, VirtualFreeEx,
+    },
+    System::Threading::{CreateRemoteThread, OpenProcess, PROCESS_ALL_ACCESS, WaitForSingleObject},
 };
 
 #[derive(Debug, Error)]
@@ -77,7 +75,7 @@ impl DllInjector {
             let result = WriteProcessMemory(
                 process_handle,
                 remote_memory,
-                dll_path_bytes.as_ptr() as LPVOID,
+                dll_path_bytes.as_ptr() as *const c_void,
                 dll_path_size,
                 &mut bytes_written as *mut usize,
             );
@@ -87,15 +85,16 @@ impl DllInjector {
             }
 
             let kernel32_cstring = CString::new("kernel32.dll").unwrap();
-            let kernel32_handle = GetModuleHandleA(kernel32_cstring.as_ptr());
+            let kernel32_handle = GetModuleHandleA(kernel32_cstring.as_ptr() as *const u8);
             if kernel32_handle.is_null() {
                 return Err(InjectionError::GetModuleHandleFailed(GetLastError()));
             }
 
             let load_library_cstring = CString::new("LoadLibraryA").unwrap();
-            let load_library_addr = GetProcAddress(kernel32_handle, load_library_cstring.as_ptr());
+            let load_library_addr =
+                GetProcAddress(kernel32_handle, load_library_cstring.as_ptr() as *const u8);
 
-            if load_library_addr.is_null() {
+            if load_library_addr.is_none() {
                 return Err(InjectionError::GetProcAddressFailed(GetLastError()));
             }
 
@@ -113,7 +112,7 @@ impl DllInjector {
                 return Err(InjectionError::CreateRemoteThreadFailed(GetLastError()));
             }
 
-            WaitForSingleObject(thread_handle, INFINITE);
+            WaitForSingleObject(thread_handle, u32::MAX);
             CloseHandle(thread_handle);
 
             Ok(())
@@ -135,7 +134,7 @@ impl Drop for ProcessHandleGuard {
 
 struct RemoteMemoryGuard {
     process_handle: HANDLE,
-    address: LPVOID,
+    address: *mut c_void,
 }
 
 impl Drop for RemoteMemoryGuard {

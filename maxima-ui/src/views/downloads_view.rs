@@ -1,10 +1,9 @@
+use crate::{APP_MARGIN, MaximaEguiApp, bridge_thread::MaximaLibRequest};
 use egui::{
     Align2, Color32, CornerRadius, FontId, Mesh, Rect, Shape, Stroke, StrokeKind, Ui, Widget, pos2,
     vec2,
 };
 use humansize::DECIMAL;
-
-use crate::{APP_MARGIN, MaximaEguiApp};
 
 #[derive(Clone)]
 pub struct QueuedDownload {
@@ -167,11 +166,17 @@ fn render_queued(app: &mut MaximaEguiApp, ui: &mut Ui, game: &QueuedDownload, is
                 Color32::WHITE,
             );
 
+            let offer = game_dl.offer.clone();
             if ui.put(left_button_rect, egui::Button::new("🗙")).clicked() {
-                //TODO: Remove
+                let _ = app
+                    .backend
+                    .backend_commander
+                    .send(MaximaLibRequest::CancelInstallRequest(offer));
             }
-            if ui.put(right_button_rect, egui::Button::new("⏸")).clicked() {
-                //TODO: Pause
+            if ui.put(right_button_rect, egui::Button::new("⮉")).clicked() {
+                let _ = app.backend.backend_commander.send(
+                    MaximaLibRequest::MoveInstallToTopRequest(game_dl.offer.clone()),
+                );
             }
         } else {
             ui.painter().text(
@@ -182,11 +187,17 @@ fn render_queued(app: &mut MaximaEguiApp, ui: &mut Ui, game: &QueuedDownload, is
                 Color32::WHITE,
             );
 
+            let offer = game_dl.offer.clone();
             if ui.put(left_button_rect, egui::Button::new("🗙")).clicked() {
-                //TODO: Remove
+                let _ = app
+                    .backend
+                    .backend_commander
+                    .send(MaximaLibRequest::CancelInstallRequest(offer));
             }
             if ui.put(right_button_rect, egui::Button::new("⮉")).clicked() {
-                //TODO: Move to top
+                let _ = app.backend.backend_commander.send(
+                    MaximaLibRequest::MoveInstallToTopRequest(game_dl.offer.clone()),
+                );
             }
         }
     });

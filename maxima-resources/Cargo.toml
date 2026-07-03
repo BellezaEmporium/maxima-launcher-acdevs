@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Sean Kahler <sean@battleda.sh>"]
 edition = "2024"
 
-[dependencies]
+[target.'cfg(windows)'.dependencies]
 winres = "0.1.12"
 
 [lib]

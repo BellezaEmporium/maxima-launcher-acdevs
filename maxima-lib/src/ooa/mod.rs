@@ -1,12 +1,7 @@
 use aes::cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
 use chrono::{DateTime, Duration, Utc};
 use log::{debug, warn};
-use std::{
-    fs::create_dir_all,
-    path::PathBuf,
-    string::FromUtf8Error,
-    sync::LazyLock,
-};
+use std::{fs::create_dir_all, path::PathBuf, string::FromUtf8Error, sync::LazyLock};
 use tokio::fs;
 
 use base64::{DecodeError, Engine, engine::general_purpose};
@@ -31,7 +26,7 @@ type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
 static EMAIL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^([a-z0-9_+]([a-z0-9_+.]*[a-z0-9_+])?)@([a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,6})"
+        r"^([a-z0-9_+]([a-z0-9_+.]*[a-z0-9_+])?)@([a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,6})",
     )
     .expect("email regex should be valid")
 });

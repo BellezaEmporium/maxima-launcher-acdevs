@@ -1,6 +1,7 @@
 use derive_getters::Getters;
 use log::{debug, error, warn};
 use quick_xml::DeError;
+use rand::rand_core::Rng;
 use regex::Regex;
 use std::{
     io::{ErrorKind, Read, Write},
@@ -9,9 +10,11 @@ use std::{
 };
 use sysinfo::{Pid, System};
 use thiserror::Error;
-use tokio::{io::AsyncWriteExt, sync::{MutexGuard, RwLock}};
 use tokio::net::TcpStream;
-use rand::rand_core::{Rng};
+use tokio::{
+    io::AsyncWriteExt,
+    sync::{MutexGuard, RwLock},
+};
 
 use super::{
     request::{
@@ -77,9 +80,8 @@ const CORE_SENDER: &str = "EALS";
 const CHALLENGE_BUILD: &str = "release";
 //const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb"; // Need to figure out how to generate this
 const CHALLENGE_VERSION: &str = "10,5,64,37936";
-static LSX_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<LSX>.*?</LSX>").expect("LSX pattern regex should be valid")
-});
+static LSX_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<LSX>.*?</LSX>").expect("LSX pattern regex should be valid"));
 
 macro_rules! lsx_message_matcher {
     (
@@ -218,7 +220,9 @@ impl Connection {
 
         // The PID system is mainly for Kyber injection
         let mut pid = get_os_pid(context);
-        if cfg!(unix) && let Ok(os_pid) = pid {
+        if cfg!(unix)
+            && let Ok(os_pid) = pid
+        {
             let sys = System::new_all();
             if let Some(process) = sys.process(Pid::from_u32(os_pid)) {
                 let filename = PathBuf::from(
@@ -265,7 +269,11 @@ impl Connection {
             queued_messages: Vec::new(),
         }));
 
-        Ok(Self { maxima: maxima_arc, stream, state })
+        Ok(Self {
+            maxima: maxima_arc,
+            stream,
+            state,
+        })
     }
 
     // State
@@ -295,7 +303,7 @@ impl Connection {
         let mut buffer = [0; 1024 * 8];
         let n = match self.stream.try_read(&mut buffer) {
             Ok(0) => return Err(LSXConnectionError::Closed),
-            Ok(n) =>  n,
+            Ok(n) => n,
             Err(e) if e.kind() == ErrorKind::WouldBlock => return Ok(()),
             Err(e) => return Err(e.into()),
         };

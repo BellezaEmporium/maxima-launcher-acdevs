@@ -1,3 +1,4 @@
+use crate::util::{easy_mark::easy_mark};
 use crate::{
     GameDetails, GameDetailsWrapper, GameInfo, InstallModalState, MaximaEguiApp, PageType,
     PopupModal, bridge_thread, set_app_modal, translation_manager::TranslationManager,
@@ -8,7 +9,6 @@ use egui::{
     UiBuilder, UiKind, Widget, pos2, vec2,
 };
 use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
-
 use strum_macros::EnumIter;
 
 #[derive(Debug, PartialEq, Default, EnumIter)]
@@ -142,7 +142,7 @@ fn game_view_system_requirements(
                     min.set_min_width(req_width);
                     min.set_max_width(req_width);
                     min.heading(&locale.localization.games_view.details.min_system_req);
-                    egui_demo_lib::easy_mark::easy_mark(min, min_requirements);
+                    easy_mark(min, min_requirements);
                 });
             }
 
@@ -152,7 +152,7 @@ fn game_view_system_requirements(
                     rec.set_min_width(req_width);
                     rec.set_max_width(req_width);
                     rec.heading(&locale.localization.games_view.details.rec_system_req);
-                    egui_demo_lib::easy_mark::easy_mark(rec, rec_requirements);
+                    easy_mark(rec, rec_requirements);
                 });
             }
         } else {

@@ -5,12 +5,12 @@ use std::{
     fmt::Display,
     fs,
     path::PathBuf,
-    sync::{
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
+};
+use tokio::sync::mpsc::{
+    UnboundedReceiver, UnboundedSender, error::TryRecvError, unbounded_channel,
 };
 use tokio::{fs::File, io};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender, error::TryRecvError};
 
 use log::{debug, error, info};
 

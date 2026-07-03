@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::{Mutex, Semaphore};
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 
 use derive_builder::Builder;
 use derive_getters::Getters;
@@ -110,8 +110,8 @@ macro_rules! load_graphql_request {
     ($type:ident, $operation:expr, $key:expr) => {{
         let content = include_str!(concat!("graphql/", $operation, ".gql"));
         let hash = sha2_const::Sha256::new()
-        .update(content.as_bytes())
-        .finalize();
+            .update(content.as_bytes())
+            .finalize();
         ServiceLayerGraphQLRequest {
             query: content,
             operation: $operation,
@@ -197,12 +197,14 @@ impl ServiceLayerClient {
         const MAX_RETRIES: u32 = 3;
         const BASE_DELAY_MS: u64 = 500;
 
-        let _permit = self.semaphore.acquire().await.map_err(|_| {
-            ServiceLayerError::Http {
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| ServiceLayerError::Http {
                 status_code: StatusCode::INTERNAL_SERVER_ERROR,
                 message: "semaphore closed".to_string(),
-            }
-        })?;
+            })?;
 
         // Enforce minimum interval between requests without holding a lock across await
         let wait = {
@@ -243,7 +245,8 @@ impl ServiceLayerClient {
                             "Request `{}` returned {}; waiting {:?} before retry {}/{}",
                             operation.operation,
                             match &err {
-                                ServiceLayerError::Http { status_code, .. } => status_code.to_string(),
+                                ServiceLayerError::Http { status_code, .. } =>
+                                    status_code.to_string(),
                                 _ => "error".to_string(),
                             },
                             delay,
@@ -619,16 +622,11 @@ service_layer_type!(AvailableBuild, {
     build_live_date: Option<String>,
 });
 
-impl ServiceAvailableBuild {
-}
+impl ServiceAvailableBuild {}
 
 impl fmt::Display for ServiceAvailableBuild {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.game_version.as_deref().unwrap_or("UnkVer")
-        )?;
+        write!(f, "{}", self.game_version.as_deref().unwrap_or("UnkVer"))?;
 
         if let Some(download_type) = &self.download_type {
             write!(f, "/{download_type}")?;

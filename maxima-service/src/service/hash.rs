@@ -4,14 +4,15 @@ use std::ffi::OsString;
 use std::fs;
 use std::os::windows::ffi::OsStringExt;
 use std::ptr::null_mut;
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::processthreadsapi::OpenProcess;
-use winapi::um::psapi::GetModuleFileNameExW;
-use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, HANDLE},
+    System::ProcessStatus::GetModuleFileNameExW,
+    System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION},
+};
 
 pub fn get_sha256_hash_of_pid(pid: u32) -> Result<[u8; 32], NativeError> {
     unsafe {
-        let process_handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
+        let process_handle: HANDLE = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
         if process_handle.is_null() {
             return Err(NativeError::CantFindProcess);
         }

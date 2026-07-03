@@ -48,12 +48,12 @@ impl BridgeThread {
 
         tokio::task::spawn(async move {
             let die_fallback = tx1.clone();
-            
+
             if let Err(err) = BridgeThread::run(rx1, tx1).await {
                 let _ = die_fallback.send(MaximaLibResponse::InteractionThreadDiedResponse);
                 panic!("Interact thread failed! {err}");
             }
-            
+
             info!("Interact thread shut down");
         });
 
@@ -69,11 +69,12 @@ impl BridgeThread {
                 .dummy_local_user(false)
                 .load_auth_storage(true)
                 .build()?,
-        ).await?;
+        )
+        .await?;
 
         {
             let maxima = maxima_arc.lock().await;
-            
+
             let Ok(()) = maxima.start_lsx(maxima_arc.clone()).await else {
                 info!("LSX failed to start!");
                 return Ok(());
@@ -107,23 +108,27 @@ impl BridgeThread {
                     let login = async || {
                         let maxima = maxima_arc.lock().await;
                         let mut auth_storage = maxima.auth_storage().lock().await;
-                        
+
                         if !auth_storage.logged_in().await? {
                             let res = login_flow().await?;
                             auth_storage.add_account(&res).await?;
                         }
 
-                        tx1.send(MaximaLibResponse::LoginResponse(InteractThreadLoginResponse {
-                            success: true,
-                            name: maxima
-                                .local_user()
-                                .await?
-                                .player()
-                                .as_ref()
-                                .unwrap()
-                                .display_name()
-                                .to_owned(),
-                        })).await.ok();
+                        tx1.send(MaximaLibResponse::LoginResponse(
+                            InteractThreadLoginResponse {
+                                success: true,
+                                name: maxima
+                                    .local_user()
+                                    .await?
+                                    .player()
+                                    .as_ref()
+                                    .unwrap()
+                                    .display_name()
+                                    .to_owned(),
+                            },
+                        ))
+                        .await
+                        .ok();
 
                         Ok(())
                     };

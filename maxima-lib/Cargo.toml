@@ -56,14 +56,13 @@ tokio-rustls = "0.26.4"
 rustls = "0.23.41"
 webpki-roots = "1.0.8"
 aes = "0.9.1"
-ecb = { version = "0.2.0", features = ["alloc", "block-padding", "default", "zeroize"] }
-cbc = { version = "0.2.1", features = ["alloc", "block-padding", "default", "zeroize"] }
+ecb = { version = "0.2.0", features = ["alloc", "block-padding", "zeroize"] }
+cbc = { version = "0.2.1", features = ["alloc", "block-padding", "zeroize"] }
 glob = "0.3.3"
 md5 = "0.8.0"
 bytes = "1.12.0"
 async-trait = "0.1.89"
 crc32fast = "1.5.0"
-async-recursion = "1.1.1"
 pelite = "0.10.0"
 gethostname = "1.1.0"
 thiserror = { workspace = true }
@@ -71,21 +70,26 @@ url = { workspace = true }
 http = "1.4.2"
 generic-array = "1.4.3"
 rustls-pki-types = "1.15.0"
+tokio-stream = "0.1.18"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = [
-    "errhandlingapi",
-    "libloaderapi",
-    "shellapi",
-    "psapi",
-    "sddl",
-    "wininet",
-    "winerror",
-    "iphlpapi",
-    "tcpmib",
-    "winsvc",
-    "winbase",
-    "impl-default"
+windows-sys = { workspace = true, features = [
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Shell",
+    "Win32_System_ProcessStatus",
+    "Win32_Security_Authorization",
+    "Win32_Security",
+    "Win32_Networking_WinInet",
+    "Win32_Foundation",
+    "Win32_System_WindowsProgramming",
+    "Win32_System_Threading",
+    "Win32_System_Console",
+    "Win32_System_Registry",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Services",
 ] }
 winreg = { workspace = true }
 windows-service = { workspace = true }

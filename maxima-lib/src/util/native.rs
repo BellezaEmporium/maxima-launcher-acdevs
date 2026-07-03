@@ -13,15 +13,12 @@ use std::{
 };
 
 #[cfg(windows)]
-use winapi::{
-    shared::windef::HWND,
-    um::{
-        libloaderapi::{GetModuleFileNameW, GetModuleHandleW},
-        wincon::GetConsoleWindow,
-        winuser::{
-            EnumWindows, FindWindowA, GetWindowThreadProcessId, IsWindowVisible,
-            SetForegroundWindow,
-        },
+use windows_sys::Win32::{
+    Foundation::{HWND, LPARAM},
+    System::Console::GetConsoleWindow,
+    System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW},
+    UI::WindowsAndMessaging::{
+        EnumWindows, FindWindowA, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
     },
 };
 
@@ -137,23 +134,20 @@ pub enum NativeError {
 }
 
 #[cfg(windows)]
-unsafe extern "system" fn enum_windows_proc(
-    hwnd: HWND,
-    _l_param: winapi::shared::minwindef::LPARAM,
-) -> winapi::shared::minwindef::BOOL {
+unsafe extern "system" fn enum_windows_proc(hwnd: HWND, _l_param: LPARAM) -> i32 {
     let mut window_process_id: u32 = 0;
 
     unsafe { GetWindowThreadProcessId(hwnd, &mut window_process_id) };
 
     if window_process_id != std::process::id() || unsafe { IsWindowVisible(hwnd) } == 0 {
-        return winapi::shared::minwindef::TRUE;
+        return 1;
     }
 
     if unsafe { IsWindowVisible(hwnd) } != 0 {
         unsafe { SetForegroundWindow(hwnd) };
     }
 
-    winapi::shared::minwindef::TRUE
+    1
 }
 #[cfg(windows)]
 pub fn get_hwnd() -> Result<HWND, NativeError> {
@@ -161,7 +155,7 @@ pub fn get_hwnd() -> Result<HWND, NativeError> {
         EnumWindows(Some(enum_windows_proc), 0);
 
         let window_name = CString::new("Maxima").expect("Failed to create native string");
-        let mut hwnd = FindWindowA(std::ptr::null(), window_name.as_ptr());
+        let mut hwnd = FindWindowA(std::ptr::null(), window_name.as_ptr() as *const u8);
         if !hwnd.is_null() {
             return Ok(hwnd);
         }
@@ -198,9 +192,9 @@ pub fn module_path() -> Result<PathBuf, NativeError> {
         .collect::<Vec<_>>();
     maxima_mod_name.push(0);
 
-    let mut hmodule = unsafe { GetModuleHandleW(maxima_mod_name.as_mut_ptr()) };
+    let mut hmodule = unsafe { GetModuleHandleW(maxima_mod_name.as_mut_ptr() as *const u16) };
     if hmodule.is_null() {
-        hmodule = unsafe { GetModuleHandleW(std::ptr::null_mut()) };
+        hmodule = unsafe { GetModuleHandleW(std::ptr::null()) };
     }
 
     if hmodule.is_null() {

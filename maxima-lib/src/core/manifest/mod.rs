@@ -47,7 +47,8 @@ impl GameManifest for DiPManifest {
     }
 
     fn execute_path(&self, trial: bool) -> Option<String> {
-        self.execute_path(trial).map(std::string::ToString::to_string)
+        self.execute_path(trial)
+            .map(std::string::ToString::to_string)
     }
 
     fn version(&self) -> Option<String> {

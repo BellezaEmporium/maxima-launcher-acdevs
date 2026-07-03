@@ -75,8 +75,7 @@ impl OwnedOffer {
 
     pub async fn install_check_path(&self) -> Result<String, ManifestError> {
         Ok(parse_registry_path(
-            self
-                .offer
+            self.offer
                 .install_check_override()
                 .as_ref()
                 .ok_or(ManifestError::NoInstallPath(self.slug.clone()))?,
@@ -137,8 +136,7 @@ impl OwnedOffer {
         } else {
             let path = PathBuf::from(
                 parse_partial_registry_path(
-                    self
-                        .offer
+                    self.offer
                         .install_check_override()
                         .as_ref()
                         .ok_or(ManifestError::NoInstallPath(self.slug.clone()))?,

@@ -82,7 +82,6 @@ macro_rules! dip_type {
     }
 }
 
-
 dip_type!(
     FeatureFlags;
     attr {
@@ -200,7 +199,6 @@ dip_type!(
     }
 );
 
-
 fn remove_leading_slash(path: &str) -> &str {
     path.strip_prefix('/').unwrap_or(path)
 }
@@ -280,12 +278,22 @@ impl DiPManifest {
     pub async fn read(path: &Path) -> Result<Self, ManifestError> {
         let bytes = tokio::fs::read(path).await?;
         let string = bytes_to_string(bytes).ok_or(ManifestError::Decode)?;
-        
+
         Ok(quick_xml::de::from_str(&string)?)
     }
 
     pub fn version(&self) -> &str {
         &self.buildMetaData.gameVersion.attr_version
+    }
+
+    pub fn locale(&self) -> &str {
+        self.gameTitles
+            .items
+            .iter()
+            .find(|t| t.locale == "en_US")
+            .map(|t| t.locale.as_str())
+            .or_else(|| self.gameTitles.items.first().map(|t| t.locale.as_str()))
+            .unwrap_or("en_US")
     }
 
     pub fn execute_path(&self, trial: bool) -> Option<&str> {
@@ -296,12 +304,14 @@ impl DiPManifest {
             .map(|l| l.filePath.as_str())
     }
 
-    fn collect_touchup_args(&self, install_path: &Path) -> Result<Vec<String>, ManifestError> {
+    fn collect_touchup_args(
+        &self,
+        install_path: &Path,
+        locale: &str,
+    ) -> Result<Vec<String>, ManifestError> {
         let install_str = platform_path(
-            remove_trailing_backslash(
-                install_path.to_str().ok_or(ManifestError::Decode)?
-            )
-            .replace('/', "\\"),
+            remove_trailing_backslash(install_path.to_str().ok_or(ManifestError::Decode)?)
+                .replace('/', "\\"),
         )
         .to_str()
         .ok_or(ManifestError::Decode)?
@@ -310,7 +320,7 @@ impl DiPManifest {
         let expanded = self
             .touchup
             .parameters
-            .replace("{locale}", "en_US")
+            .replace("{locale}", locale)
             .replace("{installLocation}", &install_str);
 
         split_args(&expanded)
@@ -331,7 +341,7 @@ impl DiPManifest {
         let install_path = PathBuf::from(remove_trailing_slash(
             install_path.to_str().ok_or(ManifestError::Decode)?,
         ));
-        let args = self.collect_touchup_args(&install_path)?;
+        let args = self.collect_touchup_args(&install_path, self.locale())?;
         let path = case_insensitive_path(install_path.join(self.touchup.path()));
 
         run_wine_command(path, Some(args), None, true, CommandType::Run).await?;
@@ -344,14 +354,10 @@ impl DiPManifest {
         use crate::util::native::NativeError;
         use tokio::process::Command;
 
-        let args = self.collect_touchup_args(install_path)?;
+        let args = self.collect_touchup_args(install_path, self.locale())?;
         let path = install_path.join(self.touchup.path());
 
-        let status = Command::new(&path)
-            .args(&args)
-            .spawn()?
-            .wait()
-            .await?;
+        let status = Command::new(&path).args(&args).spawn()?.wait().await?;
 
         if !status.success() {
             return Err(ManifestError::Native(NativeError::Command(

@@ -1,26 +1,14 @@
 #[cfg(windows)]
-extern crate winapi;
-
-use std::path::PathBuf;
-use thiserror::Error;
-
-#[cfg(windows)]
 use std::ptr;
 
 #[cfg(windows)]
 use widestring::U16CString;
 
 #[cfg(windows)]
-use winapi::{
-    shared::{minwindef::HKEY, winerror::ERROR_CANCELLED},
-    um::{
-        errhandlingapi::GetLastError,
-        shellapi::{SEE_MASK_NO_CONSOLE, SEE_MASK_NOCLOSEPROCESS, ShellExecuteExW},
-    },
-    um::{
-        winnt::KEY_QUERY_VALUE,
-        winreg::{RegCloseKey, RegOpenKeyExW, RegQueryValueExW},
-    },
+use windows_sys::Win32::{
+    Foundation::{ERROR_CANCELLED, GetLastError},
+    System::Registry::{HKEY, KEY_QUERY_VALUE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW},
+    UI::Shell::{SEE_MASK_NO_CONSOLE, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
 };
 
 #[cfg(windows)]
@@ -29,8 +17,10 @@ use winreg::{
     enums::{HKEY_CLASSES_ROOT, HKEY_LOCAL_MACHINE, KEY_WRITE},
 };
 
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::{collections::HashMap, env, fs};
+use thiserror::Error;
 
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
@@ -264,8 +254,8 @@ pub fn launch_bootstrap() -> Result<(), NativeError> {
     let file = file.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
     let parameters = parameters.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
 
-    let mut shell_execute_info = winapi::um::shellapi::SHELLEXECUTEINFOW {
-        cbSize: std::mem::size_of::<winapi::um::shellapi::SHELLEXECUTEINFOW>() as u32,
+    let mut shell_execute_info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         lpVerb: verb.as_ptr(),
         lpFile: file.as_ptr(),
         lpParameters: parameters.as_ptr(),

@@ -1,3 +1,4 @@
+use crate::ui_image::{UIImageCache, UIImageType};
 use clap::Parser;
 use desktop::check_desktop_icon;
 use egui::{
@@ -11,7 +12,6 @@ use log::error;
 use maxima::{core::library::OwnedOffer, util::log::init_logger};
 use std::{collections::HashMap, ops::RangeInclusive, path::PathBuf, sync::Arc};
 use strum_macros::EnumIter;
-use crate::ui_image::{UIImageCache, UIImageType};
 use views::{
     debug_view::debug_view,
     downloads_view::{QueuedDownload, downloads_view},
@@ -27,8 +27,8 @@ use eframe::egui_glow;
 use egui_extras::{Size, StripBuilder};
 use egui_glow::glow;
 
-use crate::renderers::app_bg_renderer::AppBgRenderer;
 use crate::bridge_thread::{BackendError, BridgeThread, InteractThreadLocateGameResponse};
+use crate::renderers::app_bg_renderer::AppBgRenderer;
 use crate::renderers::game_view_bg_renderer::GameViewBgRenderer;
 use crate::translation_manager::{TranslationManager, positional_replace};
 
@@ -1033,9 +1033,10 @@ impl MaximaEguiApp {
             )
             .clicked()
         {
-            let _ = self.backend.backend_commander.send(
-                bridge_thread::MaximaLibRequest::LoginRequestOauth,
-            );
+            let _ = self
+                .backend
+                .backend_commander
+                .send(bridge_thread::MaximaLibRequest::LoginRequestOauth);
             self.backend_state = BackendStallState::LoggingIn;
         }
     }
@@ -1152,9 +1153,10 @@ impl MaximaEguiApp {
                     )
                     .clicked()
                 {
-                    self.backend.backend_commander.send(
-                        bridge_thread::MaximaLibRequest::StartService,
-                    ).unwrap_or(());
+                    self.backend
+                        .backend_commander
+                        .send(bridge_thread::MaximaLibRequest::StartService)
+                        .unwrap_or(());
                     self.backend_state = BackendStallState::Starting;
                 }
             }
@@ -1184,9 +1186,8 @@ impl eframe::App for MaximaEguiApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&glow::Context>) {
-        let _ = self.backend
-            .backend_commander
-            .send(bridge_thread::MaximaLibRequest::ShutdownRequest);
+        let _ =
+            self.backend.backend_commander.send(bridge_thread::MaximaLibRequest::ShutdownRequest);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {

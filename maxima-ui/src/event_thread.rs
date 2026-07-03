@@ -1,5 +1,8 @@
 use egui::Context;
-use tokio::{sync::mpsc::{UnboundedSender, UnboundedReceiver}, time::Duration};
+use tokio::{
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+    time::Duration,
+};
 
 use crate::bridge_thread::BackendError;
 use log::{error, info};

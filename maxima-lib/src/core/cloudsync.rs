@@ -19,7 +19,6 @@ use super::{
 };
 use crate::util::native::{NativeError, SafeParent, SafeStr};
 use derive_getters::Getters;
-use futures::StreamExt;
 use log::{debug, error};
 use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
@@ -33,6 +32,7 @@ use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
 };
+use tokio_stream::StreamExt;
 
 const AUTH_HEADER: &str = "X-Origin-AuthToken";
 const LOCK_HEADER: &str = "X-Origin-Sync-Lock";
@@ -614,7 +614,8 @@ impl CloudSyncClient {
             lock,
             mode,
             allowed_files,
-        ).await
+        )
+        .await
     }
 }
 

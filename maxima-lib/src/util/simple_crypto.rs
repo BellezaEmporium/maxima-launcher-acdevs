@@ -21,7 +21,9 @@ pub fn simple_encrypt(data: &[u8], key: &[u8; 16]) -> String {
 
 /// Decrypt hex-encoded AES-128-ECB-PKCS7 data.
 pub fn simple_decrypt(data: &[u8], key: &[u8; 16]) -> String {
-    let Ok(ciphertext) = hex::decode(data) else { return String::new() };
+    let Ok(ciphertext) = hex::decode(data) else {
+        return String::new();
+    };
     Aes128EcbDec::new(key.into())
         .decrypt_padded_vec::<Pkcs7>(&ciphertext)
         .ok()

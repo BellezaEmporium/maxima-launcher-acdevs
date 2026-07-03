@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
 
-use futures::StreamExt;
 use inquire::Select;
 use log::{debug, error, info, warn};
 use regex::Regex;
 use service::{BridgeThread, MaximaLibRequest, MaximaLibResponse};
+use tokio_stream::StreamExt;
 
 use std::{
     io::stdout,
@@ -53,9 +53,8 @@ use maxima::{
     rtm::client::BasicPresence,
 };
 
-static MANUAL_LOGIN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(.*):(.*)$").expect("manual login regex should be valid")
-});
+static MANUAL_LOGIN_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(.*):(.*)$").expect("manual login regex should be valid"));
 
 use anyhow::{Result, bail};
 use color_eyre::config::HookBuilder;

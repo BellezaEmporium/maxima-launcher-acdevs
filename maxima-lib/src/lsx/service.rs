@@ -1,7 +1,7 @@
 use std::{io::ErrorKind, time::Duration};
 
 use log::{info, warn};
-use tokio::{time::sleep, net::TcpListener};
+use tokio::{net::TcpListener, time::sleep};
 
 use crate::lsx::connection::LSXConnectionError;
 use crate::{core::LockedMaxima, lsx::connection::Connection};
@@ -61,7 +61,10 @@ pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServ
 
         let conn = Connection::new(maxima.clone(), socket).await;
         if conn.is_err() {
-            warn!("Failed to establish LSX connection: {}", conn.err().unwrap());
+            warn!(
+                "Failed to establish LSX connection: {}",
+                conn.err().unwrap()
+            );
             continue;
         }
 

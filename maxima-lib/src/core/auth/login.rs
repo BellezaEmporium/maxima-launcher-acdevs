@@ -1,14 +1,15 @@
 use regex::Regex;
+use std::sync::LazyLock;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener;
-use std::sync::LazyLock;
 
 use crate::core::{auth::storage::AuthError, clients::JUNO_PC_CLIENT_ID};
 
 use super::context::AuthContext;
 
 static HTTP_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^([A-Za-z]+) +(.*) +(HTTP/[0-9][.][0-9])").expect("HTTP pattern regex should be valid")
+    Regex::new(r"^([A-Za-z]+) +(.*) +(HTTP/[0-9][.][0-9])")
+        .expect("HTTP pattern regex should be valid")
 });
 
 pub async fn begin_oauth_login_flow<'a>(context: &mut AuthContext<'a>) -> Result<(), AuthError> {

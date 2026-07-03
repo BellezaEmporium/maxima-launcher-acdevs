@@ -62,6 +62,8 @@ pub enum ContentManagerError {
 
     #[error("download in progress, you must cancel it before starting a new one")]
     DownloadInProgress,
+    #[error("offer `{0}` is not in the download queue")]
+    NotInQueue(String),
 }
 
 #[derive(Error, Debug)]
@@ -133,6 +135,7 @@ pub struct GameDownloader {
     total_count: usize,
     total_bytes: usize,
     notify: Arc<Notify>,
+    error: Arc<std::sync::Mutex<Option<DownloaderError>>>,
 }
 
 impl GameDownloader {
@@ -171,11 +174,12 @@ impl GameDownloader {
             total_count,
             total_bytes,
             notify: Arc::new(Notify::new()),
+            error: Arc::new(std::sync::Mutex::new(None)),
         })
     }
 
     pub fn download(&self) {
-        let (downloader_arc, entries, cancel_token, completed_bytes, notify) =
+        let (downloader_arc, entries, cancel_token, completed_bytes, notify, error) =
             self.prepare_download_vars();
         let total_count = self.total_count;
         tokio::spawn(async move {
@@ -189,7 +193,8 @@ impl GameDownloader {
             )
             .await;
             if let Err(err) = dl {
-                error!("Error when downloading!: `{:?}", err)
+                error!("Error when downloading!: `{:?}", err);
+                *error.lock().unwrap() = Some(err);
             }
         });
     }
@@ -202,6 +207,7 @@ impl GameDownloader {
         CancellationToken,
         Arc<AtomicUsize>,
         Arc<Notify>,
+        Arc<std::sync::Mutex<Option<DownloaderError>>>,
     ) {
         (
             self.downloader.clone(),
@@ -209,6 +215,7 @@ impl GameDownloader {
             self.cancel_token.clone(),
             self.completed_bytes.clone(),
             self.notify.clone(),
+            self.error.clone(),
         )
     }
 
@@ -297,6 +304,10 @@ impl GameDownloader {
     pub fn offer_id(&self) -> &String {
         &self.offer_id
     }
+
+    pub fn take_error(&self) -> Option<DownloaderError> {
+        self.error.lock().unwrap().take()
+    }
 }
 
 #[derive(Getters)]
@@ -359,19 +370,103 @@ impl ContentManager {
         Ok(())
     }
 
+    pub async fn cancel_install(&mut self, offer_id: &str) -> Result<(), ContentManagerError> {
+        if let Some(current) = &self.current {
+            if current.offer_id() == offer_id {
+                current.cancel();
+                self.current = None;
+                self.queue.current = None;
+
+                if let Some(game) = self.queue.queued.pop() {
+                    self.install_now(game).await?;
+                }
+
+                self.queue.save().await?;
+                return Ok(());
+            }
+        }
+
+        let pos = self
+            .queue
+            .queued
+            .iter()
+            .position(|g| g.offer_id == offer_id);
+        if let Some(pos) = pos {
+            self.queue.queued.remove(pos);
+            self.queue.save().await?;
+            return Ok(());
+        }
+
+        Err(ContentManagerError::NotInQueue(offer_id.to_owned()))
+    }
+
+    pub async fn pause_install(&mut self, offer_id: &str) -> Result<(), ContentManagerError> {
+        if let Some(current) = &self.current {
+            if current.offer_id() == offer_id {
+                current.cancel();
+                self.current = None;
+                let game = self
+                    .queue
+                    .current
+                    .take()
+                    .ok_or_else(|| ContentManagerError::NotInQueue(offer_id.to_owned()))?;
+
+                self.queue.queued.insert(0, game);
+
+                if let Some(next) = self.queue.queued.pop() {
+                    self.install_now(next).await?;
+                }
+
+                self.queue.save().await?;
+                return Ok(());
+            }
+        }
+
+        Err(ContentManagerError::NotInQueue(offer_id.to_owned()))
+    }
+
+    pub async fn move_install_to_top(&mut self, offer_id: &str) -> Result<(), ContentManagerError> {
+        let pos = self
+            .queue
+            .queued
+            .iter()
+            .position(|g| g.offer_id == offer_id);
+        if let Some(pos) = pos {
+            let game = self.queue.queued.remove(pos);
+            self.queue.queued.insert(0, game);
+            self.queue.save().await?;
+            return Ok(());
+        }
+
+        Err(ContentManagerError::NotInQueue(offer_id.to_owned()))
+    }
+
     pub(crate) async fn update(&mut self) -> Result<Option<MaximaEvent>, ContentManagerError> {
         let mut event = None;
 
-        if let Some(current) = &self.current && current.is_done() {
-            event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
-            self.current = None;
-            self.queue.current = None;
+        if let Some(current) = &self.current {
+            if current.is_done() {
+                event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
+                self.current = None;
+                self.queue.current = None;
 
-            if let Some(game) = self.queue.queued.pop() {
-                self.install_now(game).await?;
+                if let Some(game) = self.queue.queued.pop() {
+                    self.install_now(game).await?;
+                }
+
+                self.queue.save().await?;
+            } else if let Some(err) = current.take_error() {
+                let offer_id = current.offer_id().to_owned();
+                self.current = None;
+                self.queue.current = None;
+
+                if let Some(game) = self.queue.queued.pop() {
+                    self.install_now(game).await?;
+                }
+
+                self.queue.save().await?;
+                event = Some(MaximaEvent::InstallFailed(offer_id, err.to_string()));
             }
-
-            self.queue.save().await?;
         }
 
         Ok(event)

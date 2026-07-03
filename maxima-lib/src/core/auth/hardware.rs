@@ -552,10 +552,9 @@ fn extract_diskutil_volume_uuid(output: &str) -> Option<&str> {
 #[cfg(target_os = "windows")]
 fn get_c_drive_volume_serial() -> u32 {
     use std::ptr;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::fileapi::GetVolumeInformationW;
+    use windows_sys::Win32::Storage::FileSystem::GetVolumeInformationW;
 
-    let mut serial: DWORD = 0;
+    let mut serial: u32 = 0;
     let res = unsafe {
         GetVolumeInformationW(
             "C:\\"
