@@ -1,4 +1,4 @@
-use crate::util::{easy_mark::easy_mark};
+use crate::util::easy_mark::easy_mark;
 use crate::{
     GameDetails, GameDetailsWrapper, GameInfo, InstallModalState, MaximaEguiApp, PageType,
     PopupModal, bridge_thread, set_app_modal, translation_manager::TranslationManager,
@@ -190,10 +190,32 @@ fn game_view_system_requirements(
 
 pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
     puffin::profile_function!();
-    if app.games.len() < 1 {
+    if app.games.is_empty() {
         return;
     }
-    let game: GameInfo = if let Some(game) = app.games.get_mut(&app.game_sel) {
+    let game_details: Option<GameDetails> = {
+        let game = if let Some(g) = app.games.get_mut(&app.game_sel) {
+            g
+        } else {
+            return;
+        };
+        match &game.details {
+            GameDetailsWrapper::Unloaded => {
+                app.backend
+                    .backend_commander
+                    .send(bridge_thread::MaximaLibRequest::GetGameDetailsRequest(
+                        game.slug.clone(),
+                    ))
+                    .unwrap_or_else(|_| ());
+                game.details = GameDetailsWrapper::Loading;
+                None
+            }
+            GameDetailsWrapper::Loading => None,
+            GameDetailsWrapper::Available(details) => Some(details.clone()),
+        }
+    };
+
+    let game: GameInfo = if let Some(game) = app.games.get(&app.game_sel) {
         game.clone()
     } else {
         return;
@@ -203,21 +225,6 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
             app.img_cache.get(crate::ui_image::UIImageType::Hero(game.slug.clone())),
             app.img_cache.get(crate::ui_image::UIImageType::Logo(game.slug.clone())),
         )
-    };
-
-    let game_details: Option<GameDetails> = match &game.details {
-        GameDetailsWrapper::Unloaded => {
-            app.backend
-                .backend_commander
-                .send(bridge_thread::MaximaLibRequest::GetGameDetailsRequest(
-                    game.slug.clone(),
-                ))
-                .unwrap_or_else(|_| ());
-            app.games.get_mut(&app.game_sel).unwrap().details = GameDetailsWrapper::Loading;
-            None
-        }
-        GameDetailsWrapper::Loading => None,
-        GameDetailsWrapper::Available(details) => Some(details.clone()),
     };
 
     let mut hero_rect = Rect::clone(&ui.available_rect_before_wrap());
@@ -244,10 +251,9 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
         ui.style_mut().visuals.widgets.hovered.corner_radius = CornerRadius::same(4);
 
         let mut logo_transition_frac = 0.0;
-        ScrollArea::vertical()
-            .auto_shrink(false)
-            .id_salt("GameViewPanel_ScrollerArea")
-            .show(ui, |ui| {
+        ScrollArea::vertical().auto_shrink(false).id_salt("GameViewPanel_ScrollerArea").show(
+            ui,
+            |ui| {
                 puffin::profile_scope!("details");
                 let hero_height_capped = hero_rect.size().y.max(0.0);
                 ui.allocate_space(vec2(0.0, hero_height_capped));
@@ -278,7 +284,11 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                         );
                     }
                 } else {
-                    ui.painter().rect_filled(hero_rect, CornerRadius::same(0), Color32::TRANSPARENT);
+                    ui.painter().rect_filled(
+                        hero_rect,
+                        CornerRadius::same(0),
+                        Color32::TRANSPARENT,
+                    );
                 }
 
                 if hero_vis_frac < 1.0
@@ -310,7 +320,8 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                 let avoid_scrollbar_margin = Margin {
                     left: 0,
                     right: (ui.style().spacing.scroll.bar_width
-                        + ui.style().spacing.scroll.bar_inner_margin) as i8,
+                        + ui.style().spacing.scroll.bar_inner_margin)
+                        as i8,
                     top: 0,
                     bottom: 0,
                 };
@@ -357,7 +368,7 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                                     );
                                     stats.label(
                                         RichText::new(format!(
-                                            ": {:?} / {:?}",
+                                            ": {} / {}",
                                             details.achievements_unlocked,
                                             details.achievements_total
                                         ))
@@ -407,35 +418,36 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                                 Color32::from_black_alpha(128),
                             );
                             dlc.scope_builder(UiBuilder::new().max_rect(rect), |dlc| {
-                                let _ = match package.product().status() {
-                                    maxima::core::service_layer::ServiceOwnershipStatus::Active => true,
-                                    maxima::core::service_layer::ServiceOwnershipStatus::Disabled => false,
-                                };
-
-                                dlc.heading(format!("{}", package.offer().display_name()));
+                                let is_active = matches!(
+                                    package.product().status(),
+                                    maxima::core::service_layer::ServiceOwnershipStatus::Active
+                                );
+                                dlc.add_enabled_ui(is_active, |dlc| {
+                                    dlc.heading(package.offer().display_name());
+                                });
                             });
                         }
                     });
 
                     {
                         puffin::profile_scope!("filler");
-                        for _idx in 0..75 {
-                            ui.heading("");
-                        }
+                        ui.allocate_space(vec2(
+                            ui.available_width(),
+                            75.0 * ui.text_style_height(&egui::TextStyle::Heading),
+                        ));
                     }
                 });
-            }); // ScrollArea
+            },
+        ); // ScrollArea
         if let Some(handle) = logo {
             let logo_size_pre = if handle.size_vec2().x >= handle.size_vec2().y {
-                // wider than it is tall, scale based on X as max
                 let mult_frac = 320.0 / handle.size_vec2().x;
                 handle.size_vec2().y * mult_frac
             } else {
-                // taller than it is wide, scale based on Y
-                // fringe edge case, here in case EA decides they want to pull something really fucking stupid
-                0.0 // TODO: CALCULATE IT
+                let mult_frac = 160.0 / handle.size_vec2().y;
+                handle.size_vec2().x * mult_frac
             };
-            let frac2 = logo_transition_frac.clone();
+            let frac2 = logo_transition_frac;
             let logo_size = vec2(
                 egui::lerp(320.0..=160.0, frac2),
                 egui::lerp(logo_size_pre..=(logo_size_pre / 2.0), frac2),
@@ -456,24 +468,34 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
 }
 
 fn game_list_button_context_menu(app: &MaximaEguiApp, game: &GameInfo, ui: &mut Ui) {
-    ui.add_enabled_ui(app.playing_game.is_none(), |play_button| {
-        if play_button.button("▶ Play").clicked() {
-            let settings = app.settings.game_settings.get(&game.slug);
-            let settings = if let Some(settings) = settings {
-                Some(settings.to_owned())
-            } else {
-                None
-            };
-            let _ = app.backend.backend_commander.send(
-                crate::bridge_thread::MaximaLibRequest::StartGameRequest(game.clone(), settings),
-            );
-            play_button.close_kind(UiKind::Menu);
-        }
-    });
-    ui.separator();
-    if ui.button("UNINSTALL").clicked() {
-        ui.close_kind(UiKind::Menu);
+    let is_ood = !app.settings.ignore_ood_games && game.version.installed != game.version.latest;
+    if is_ood {
+        ui.add_enabled_ui(false, |play_button| {
+            play_button.button("⚠ Update required");
+        });
+    } else {
+        ui.add_enabled_ui(app.playing_game.is_none(), |play_button| {
+            if play_button.button("▶ Play").clicked() {
+                let settings = app.settings.game_settings.get(&game.slug);
+                let settings = if let Some(settings) = settings {
+                    Some(settings.to_owned())
+                } else {
+                    None
+                };
+                let _ = app.backend.backend_commander.send(
+                    crate::bridge_thread::MaximaLibRequest::StartGameRequest(
+                        game.clone(),
+                        settings,
+                    ),
+                );
+                play_button.close_kind(UiKind::Menu);
+            }
+        });
     }
+    ui.separator();
+    ui.add_enabled_ui(false, |ui| {
+        ui.button("UNINSTALL (not yet implemented)");
+    });
 }
 
 const F9B233: Color32 = Color32::from_rgb(249, 178, 51);
@@ -657,7 +679,7 @@ fn show_game_list_buttons(app: &mut MaximaEguiApp, ui: &mut Ui) {
 
 pub fn games_view(app: &mut MaximaEguiApp, ui: &mut Ui) {
     puffin::profile_function!();
-    if app.games.len() < 1 {
+    if app.games.is_empty() {
         ui.with_layout(
             egui::Layout::centered_and_justified(egui::Direction::RightToLeft),
             |ui| {

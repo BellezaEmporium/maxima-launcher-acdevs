@@ -126,9 +126,8 @@ fn main() {
             let app = MaximaEguiApp::new(cc, args);
             // TODO: Implement no_login bypass (skip auth initialization)
             if args.no_login {
-                return Ok(Box::new(app));
+                log::warn!("--no-login is not yet implemented, ignoring");
             }
-
             Ok(Box::new(app))
         }),
     )
@@ -197,6 +196,12 @@ pub struct GameSettings {
 
 impl GameSettings {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for GameSettings {
+    fn default() -> Self {
         Self {
             cloud_saves: true,
             launch_args: String::new(),
@@ -314,27 +319,26 @@ pub struct MaximaEguiApp {
     pub offer_to_slug: HashMap<String, String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, EnumIter)]
+#[derive(Default, serde::Serialize, serde::Deserialize, PartialEq, EnumIter)]
 pub enum FrontendLanguage {
+    #[default]
     SystemDefault,
     EnUS,
     FrFR,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Copy, Clone)]
+#[derive(Default, serde::Serialize, serde::Deserialize, Copy, Clone)]
 pub struct FrontendPerformanceSettings {
     disable_blur: bool,
 }
 
 impl FrontendPerformanceSettings {
     pub fn new() -> Self {
-        Self {
-            disable_blur: false,
-        }
+        Self::default()
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct FrontendSettings {
     default_install_folder: String,
     language: FrontendLanguage,
@@ -345,13 +349,7 @@ pub struct FrontendSettings {
 
 impl FrontendSettings {
     pub fn new() -> Self {
-        Self {
-            default_install_folder: String::new(),
-            language: FrontendLanguage::SystemDefault,
-            ignore_ood_games: false,
-            game_settings: HashMap::new(),
-            performance_settings: FrontendPerformanceSettings::new(),
-        }
+        Self::default()
     }
 }
 
@@ -380,7 +378,6 @@ impl MaximaEguiApp {
                 faint_bg_color: Color32::from_rgb(15, 20, 34),
                 extreme_bg_color: Color32::from_rgb(20, 20, 20),
                 window_fill: Color32::BLACK,
-                //override_text_color: Some(Color32::WHITE),
                 hyperlink_color: F9B233,
                 widgets: Widgets {
                     hovered: WidgetVisuals {
@@ -502,9 +499,9 @@ pub fn tab_bar_button(ui: &mut Ui, res: Response) {
     puffin::profile_function!();
     let mut res2 = Rect::clone(&res.rect);
     res2.min.y = res2.max.y - 4.;
-    ui.painter().vline(
-        res2.min.x + 2.0,
-        RangeInclusive::new(res2.min.y, res2.max.y),
+    ui.painter().hline(
+        RangeInclusive::new(res2.min.x, res2.max.x),
+        res2.max.y - 2.0,
         Stroke::new(2.0, ACCENT_COLOR),
     );
     ui.painter().rect_filled(
@@ -521,7 +518,7 @@ pub fn tab_bar_button(ui: &mut Ui, res: Response) {
 /// We used to have a semi-functional implementation that only worked on Mac, but, as i would say, we do not care 🗣️🗣️🗣️
 fn custom_window_frame(
     enabled: bool,
-    crash_text: String,
+    crash_text: &str,
     ui: &mut egui::Ui,
     _frame: &mut eframe::Frame,
     _title: &str,
@@ -570,41 +567,43 @@ fn custom_window_frame(
 
 /// Wrapper/helper for the tab buttons in the top left of the app
 fn tab_button(ui: &mut Ui, edit_var: &mut PageType, page: PageType, label: &str) {
-    puffin::profile_function!();
-    ui.style_mut().visuals.widgets.inactive.corner_radius = CornerRadius::ZERO;
-    ui.style_mut().visuals.widgets.active.corner_radius = CornerRadius::ZERO;
-    ui.style_mut().visuals.widgets.hovered.corner_radius = CornerRadius::ZERO;
-    ui.style_mut().visuals.widgets.inactive.expansion = -1.0;
-    ui.style_mut().visuals.widgets.active.expansion = -1.0;
-    ui.style_mut().visuals.widgets.hovered.expansion = -1.0;
+    ui.scope(|ui| {
+        puffin::profile_function!();
+        ui.style_mut().visuals.widgets.inactive.corner_radius = CornerRadius::ZERO;
+        ui.style_mut().visuals.widgets.active.corner_radius = CornerRadius::ZERO;
+        ui.style_mut().visuals.widgets.hovered.corner_radius = CornerRadius::ZERO;
+        ui.style_mut().visuals.widgets.inactive.expansion = -1.0;
+        ui.style_mut().visuals.widgets.active.expansion = -1.0;
+        ui.style_mut().visuals.widgets.hovered.expansion = -1.0;
 
-    if edit_var == &page {
-        ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::WHITE;
-        ui.style_mut().visuals.widgets.inactive.fg_stroke = Stroke::new(2.0, Color32::BLACK);
-        ui.style_mut().visuals.widgets.inactive.bg_stroke = Stroke::NONE;
-        ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::WHITE;
-        ui.style_mut().visuals.widgets.active.fg_stroke = Stroke::new(2.0, Color32::BLACK);
-        ui.style_mut().visuals.widgets.active.bg_stroke = Stroke::NONE;
-        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::WHITE;
-        ui.style_mut().visuals.widgets.hovered.fg_stroke = Stroke::new(2.0, Color32::BLACK);
-        ui.style_mut().visuals.widgets.hovered.bg_stroke = Stroke::NONE;
-    } else {
-        ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-        ui.style_mut().visuals.widgets.inactive.fg_stroke = Stroke::new(2.0, Color32::WHITE);
-        ui.style_mut().visuals.widgets.inactive.bg_stroke = Stroke::NONE;
-        ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::TRANSPARENT;
-        ui.style_mut().visuals.widgets.active.fg_stroke = Stroke::new(2.0, F9B233);
-        ui.style_mut().visuals.widgets.active.bg_stroke = Stroke::NONE;
-        ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::TRANSPARENT;
-        ui.style_mut().visuals.widgets.hovered.fg_stroke = Stroke::new(2.0, F9B233);
-        ui.style_mut().visuals.widgets.hovered.bg_stroke = Stroke::NONE;
-    }
-    let text = egui::RichText::new(label.to_uppercase()).size(16.0);
+        if edit_var == &page {
+            ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::WHITE;
+            ui.style_mut().visuals.widgets.inactive.fg_stroke = Stroke::new(2.0, Color32::BLACK);
+            ui.style_mut().visuals.widgets.inactive.bg_stroke = Stroke::NONE;
+            ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::WHITE;
+            ui.style_mut().visuals.widgets.active.fg_stroke = Stroke::new(2.0, Color32::BLACK);
+            ui.style_mut().visuals.widgets.active.bg_stroke = Stroke::NONE;
+            ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::WHITE;
+            ui.style_mut().visuals.widgets.hovered.fg_stroke = Stroke::new(2.0, Color32::BLACK);
+            ui.style_mut().visuals.widgets.hovered.bg_stroke = Stroke::NONE;
+        } else {
+            ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+            ui.style_mut().visuals.widgets.inactive.fg_stroke = Stroke::new(2.0, Color32::WHITE);
+            ui.style_mut().visuals.widgets.inactive.bg_stroke = Stroke::NONE;
+            ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::TRANSPARENT;
+            ui.style_mut().visuals.widgets.active.fg_stroke = Stroke::new(2.0, F9B233);
+            ui.style_mut().visuals.widgets.active.bg_stroke = Stroke::NONE;
+            ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::TRANSPARENT;
+            ui.style_mut().visuals.widgets.hovered.fg_stroke = Stroke::new(2.0, F9B233);
+            ui.style_mut().visuals.widgets.hovered.bg_stroke = Stroke::NONE;
+        }
+        let text = egui::RichText::new(label.to_uppercase()).size(16.0);
 
-    let test = ui.add_sized([120.0, 28.0], egui::Button::new(text));
-    if test.clicked() {
-        *edit_var = page;
-    }
+        let test = ui.add_sized([120.0, 28.0], egui::Button::new(text));
+        if test.clicked() {
+            *edit_var = page;
+        }
+    });
 }
 
 // god-awful macro to do something incredibly simple because apparently wrapping it in a function has rustc fucking implode
@@ -710,6 +709,14 @@ impl MaximaEguiApp {
                         FontId::proportional(10.0),
                         Color32::WHITE,
                     );
+                } else {
+                    rtl.painter().text(
+                        point,
+                        Align2::RIGHT_CENTER,
+                        &self.user_name,
+                        FontId::proportional(15.0),
+                        Color32::WHITE,
+                    );
                 }
             } else {
                 rtl.painter().text(
@@ -787,8 +794,8 @@ impl MaximaEguiApp {
                     egui::Frame::default()
                     .fill(Color32::from_black_alpha(200))
                     .outer_margin(Margin::symmetric(
-                        (((app_rect.width() - 600.0) / 2.0).clamp(i8::MIN as f32, i8::MAX as f32)) as i8,
-                        (((app_rect.height() - 400.0) / 2.0).clamp(i8::MIN as f32, i8::MAX as f32)) as i8,
+                        ((app_rect.width() - 600.0) / 2.0).max(0.0) as i8,
+                        ((app_rect.height() - 400.0) / 2.0).max(0.0) as i8,
                     ))
                     .inner_margin(Margin::same(12))
                     .corner_radius(CornerRadius::same(8))
@@ -1055,7 +1062,11 @@ impl MaximaEguiApp {
 
             if has_game_img {
                 if self.game_sel.is_empty() && !self.games.is_empty() {
-                    if let Some(key) = self.games.keys().next() {
+                    if let Some(key) = self.games.keys().min_by(|a, b| {
+                        let na = &self.games[*a].name;
+                        let nb = &self.games[*b].name;
+                        na.to_lowercase().cmp(&nb.to_lowercase())
+                    }) {
                         self.game_sel = key.clone();
                     }
                 }
@@ -1198,11 +1209,7 @@ impl eframe::App for MaximaEguiApp {
         let ctx = ui.ctx().clone();
         custom_window_frame(
             self.critical_error.is_none(),
-            if let Some(err) = &self.critical_error {
-                format!("{:?}", err)
-            } else {
-                String::new()
-            },
+            self.critical_error.as_ref().map(|e| format!("{:?}", e)).as_deref().unwrap_or(""),
             ui,
             frame,
             "Maxima",

@@ -355,42 +355,31 @@ impl Connection {
         let lsx_message: LSX = quick_xml::de::from_str(message.as_str())?;
 
         let state = self.state.clone();
-        tokio::spawn(async move {
-            let reply: Result<Option<LSXMessageType>, LSXConnectionError> = match lsx_message.value
-            {
-                LSXMessageType::Event(msg) => Connection::process_event_message(&state, msg).await,
-                LSXMessageType::Request(msg) => {
-                    Connection::process_request_message(&state, msg).await
-                }
-                LSXMessageType::Response(_) => {
-                    warn!("Unexpected LSX Response message received, ignoring");
-                    Ok(None)
-                }
-            };
 
-            let reply: Option<LSXMessageType> = match reply {
-                Ok(reply) => reply,
-                Err(err) => {
-                    error!("Failed to process LSX message: {}", err);
-                    return;
-                }
-            };
-
-            if let Some(reply) = reply {
-                let mut state = state.write().await;
-                let result = state.queue_message(LSX { value: reply });
-
-                if let Err(err) = result {
-                    error!("Failed to queue LSX message: {}", err);
-                    return;
-                }
+        let reply = match lsx_message.value {
+            LSXMessageType::Request(msg) => {
+                Connection::process_request_message(&self.state, msg).await?
             }
-
-            let mut state = state.write().await;
-            if let EncryptionState::Ready(key) = state.encryption {
-                state.encryption = EncryptionState::Enabled(key);
+            LSXMessageType::Event(msg) => {
+                Connection::process_event_message(&self.state, msg).await?
             }
-        });
+            LSXMessageType::Response(_) => {
+                warn!("Unexpected LSX Response message received, ignoring");
+                None
+            }
+        };
+
+        if let Some(reply) = reply {
+            self.state
+                .write()
+                .await
+                .queue_message(LSX { value: reply })?;
+        }
+
+        let mut state = self.state.write().await;
+        if let EncryptionState::Ready(key) = state.encryption {
+            state.encryption = EncryptionState::Enabled(key);
+        }
 
         Ok(())
     }

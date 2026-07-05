@@ -19,6 +19,8 @@ use derive_getters::Getters;
 use std::{collections::HashMap, path::PathBuf, time::SystemTimeError};
 use thiserror::Error;
 
+const LIBRARY_CACHE_TTL_SECS: u64 = 1200;
+
 #[derive(Error, Debug)]
 pub enum LibraryError {
     #[error(transparent)]
@@ -223,6 +225,15 @@ fn group_offers(products: Vec<OwnedOffer>) -> Vec<OwnedTitle> {
         }
     }
 
+    // Promote any product_map entry that has no corresponding base_products entry
+    for (slug, products) in &product_map {
+        if !base_products.contains_key(slug) {
+            if let Some(first) = products.first() {
+                base_products.insert(slug.clone(), first.clone());
+            }
+        }
+    }
+
     let mut titles = Vec::new();
 
     for (base_slug, base_offer) in base_products {
@@ -348,7 +359,7 @@ impl GameLibrary {
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs();
 
-        if now - self.last_request > 1200 {
+        if now - self.last_request > LIBRARY_CACHE_TTL_SECS {
             self.request_owned_games().await?;
         }
 

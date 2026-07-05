@@ -88,28 +88,35 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                     DownloadQueueUpdate(current, queue) => {
                         if let Some(current) = current {
                             if !app.installing_now.as_ref().is_some_and(|n| n.offer == current) {
-                                app.installing_now = Some(QueuedDownload {
-                                    slug: find_slug_for_offer(&app.games, &current),
-                                    offer: current,
-                                    downloaded_bytes: 0,
-                                    total_bytes: 0,
-                                });
+                                let slug = find_slug_for_offer(&app.games, &current);
+                                if !slug.is_empty() {
+                                    app.installing_now = Some(QueuedDownload {
+                                        slug,
+                                        offer: current,
+                                        downloaded_bytes: 0,
+                                        total_bytes: 0,
+                                    });
+                                }
+                            } else {
+                                app.installing_now = None;
                             }
-                        } else {
-                            app.installing_now = None;
-                        }
 
-                        app.install_queue.clear();
-                        for offer in queue {
-                            app.install_queue.insert(
-                                offer.clone(),
-                                QueuedDownload {
-                                    slug: find_slug_for_offer(&app.games, &offer),
-                                    offer,
-                                    downloaded_bytes: 0,
-                                    total_bytes: 0,
-                                },
-                            );
+                            app.install_queue.clear();
+                            for offer in queue {
+                                let slug = find_slug_for_offer(&app.games, &offer);
+                                if slug.is_empty() {
+                                    continue;
+                                }
+                                app.install_queue.insert(
+                                    offer.clone(),
+                                    QueuedDownload {
+                                        slug,
+                                        offer,
+                                        downloaded_bytes: 0,
+                                        total_bytes: 0,
+                                    },
+                                );
+                            }
                         }
                     }
                     DownloadFailed(offer, reason) => {

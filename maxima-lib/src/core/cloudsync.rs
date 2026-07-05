@@ -273,16 +273,17 @@ impl<'a> CloudSyncLock<'a> {
 
             let file = OpenOptions::new().read(true).open(path.clone()).await;
 
-            let _md5 = if let Ok(file) = file {
+            let should_download = if let Ok(file) = file {
                 let md5 = calc_file_md5(file, HashMode::Hex).await?;
-                if self.manifest.file_by_md5(&md5).is_some() {
-                    debug!("Skipping CloudSync read {}", &path.display());
-                    continue;
-                }
-                md5
+                self.manifest.file_by_md5(&md5).is_none()
             } else {
-                continue;
+                true // File isn't there, download it.
             };
+
+            if !should_download {
+                debug!("Skipping CloudSync read {}", &path.display());
+                continue;
+            }
 
             value.request.push(CloudSyncRequest {
                 attr_id: i.to_string(),
@@ -545,7 +546,10 @@ impl CloudSyncClient {
     pub fn new(auth: LockedAuthStorage) -> Self {
         Self {
             auth,
-            client: ClientBuilder::default().gzip(true).build().unwrap(),
+            client: ClientBuilder::default()
+                .gzip(true)
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 
@@ -554,10 +558,15 @@ impl CloudSyncClient {
         offer: &OwnedOffer,
         mode: CloudSyncLockMode,
     ) -> Result<CloudSyncLock<'_>, CloudSyncError> {
+        let multiplayer_id = offer
+            .offer()
+            .multiplayer_id()
+            .as_deref()
+            .unwrap_or_else(|| offer.offer().offer_id());
         let id = format!(
             "{}_{}",
             offer.offer().primary_master_title_id(),
-            offer.offer().multiplayer_id().as_ref().unwrap()
+            multiplayer_id
         );
 
         let mut allowed_files = Vec::new();

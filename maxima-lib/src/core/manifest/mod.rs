@@ -38,6 +38,7 @@ pub trait GameManifest: Send + std::fmt::Debug {
     async fn run_touchup(&self, install_path: &Path) -> Result<(), ManifestError>;
     fn execute_path(&self, trial: bool) -> Option<String>;
     fn version(&self) -> Option<String>;
+    fn needs_touchup_on_locate(&self) -> bool;
 }
 #[async_trait::async_trait]
 impl GameManifest for DiPManifest {
@@ -53,6 +54,13 @@ impl GameManifest for DiPManifest {
 
     fn version(&self) -> Option<String> {
         Some(self.version().to_string())
+    }
+
+    fn needs_touchup_on_locate(&self) -> bool {
+        self.buildMetaData()
+            .featureFlags()
+            .attr_forceTouchupInstallerAfterUpdate
+            .eq_ignore_ascii_case("true")
     }
 }
 
@@ -70,20 +78,43 @@ impl GameManifest for PreDiPManifest {
     fn version(&self) -> std::option::Option<std::string::String> {
         Some(self.version().to_string())
     }
+
+    fn needs_touchup_on_locate(&self) -> bool {
+        false // pre-DiP games never had this concept
+    }
+}
+
+/// https://www.reddit.com/r/rust/comments/11co87m/comment/ja4sy88
+fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
+    if let Ok(v) = String::from_utf8(bytes.clone()) {
+        return Some(v);
+    }
+
+    let u16_bytes: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|a| u16::from_ne_bytes([a[0], a[1]]))
+        .collect();
+
+    String::from_utf16(&u16_bytes).ok()
+}
+
+pub fn from_bytes<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, ManifestError> {
+    let string = bytes_to_string(bytes.to_vec()).ok_or(ManifestError::Decode)?;
+    Ok(quick_xml::de::from_str(&string)?)
 }
 
 pub async fn read(path: PathBuf) -> Result<Box<dyn GameManifest>, ManifestError> {
-    let dip_attempt = DiPManifest::read(&path).await;
-    if let Ok(manifest) = dip_attempt {
-        return Ok(Box::new(manifest));
-    }
-    let pre_dip_attempt = PreDiPManifest::read(&path).await;
-    if let Ok(manifest) = pre_dip_attempt {
-        return Ok(Box::new(manifest));
+    let bytes = tokio::fs::read(&path).await?;
+
+    if let Ok(m) = from_bytes::<DiPManifest>(&bytes) {
+        return Ok(Box::new(m));
     }
 
-    Err(ManifestError::Unsupported {
-        dip_attempt: dip_attempt.unwrap_err().into(),
-        pre_dip_attempt: pre_dip_attempt.unwrap_err().into(),
-    })
+    match from_bytes::<PreDiPManifest>(&bytes) {
+        Ok(m) => Ok(Box::new(m)),
+        Err(pre_dip_err) => Err(ManifestError::Unsupported {
+            dip_attempt: Box::new(ManifestError::Decode),
+            pre_dip_attempt: Box::new(pre_dip_err),
+        }),
+    }
 }

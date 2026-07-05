@@ -24,56 +24,46 @@ pub async fn start_server(port: u16, maxima: LockedMaxima) -> Result<(), LSXServ
     let mut connections: Vec<Connection> = Vec::new();
 
     loop {
-        let mut idx = 0_usize;
+        let mut idx = 0;
         while idx < connections.len() {
-            let connection = &mut connections[idx];
-
-            if connection.process_queue().await.is_err() {
-                warn!("Failed to process LSX message queue");
-            }
-
-            if connection.listen().await.is_err() {
+            if connections[idx].process_queue().await.is_err()
+                || connections[idx].listen().await.is_err()
+            {
                 warn!("LSX connection closed");
                 connections.remove(idx);
                 maxima
                     .lock()
                     .await
                     .set_lsx_connections(connections.len() as u16);
-                continue;
+            } else {
+                idx += 1;
             }
-
-            idx += 1;
         }
 
-        let (socket, addr) = match listener.accept().await {
-            Ok(s) => s,
-            Err(err) => {
-                let kind = err.kind();
-                if kind == ErrorKind::WouldBlock {
-                    sleep(Duration::from_millis(20)).await;
-                    continue;
+        tokio::select! {
+            accept_result = listener.accept() => {
+                match accept_result {
+                    Ok((socket, addr)) => {
+                        info!("New LSX connection: {:?}", addr);
+                        match Connection::new(maxima.clone(), socket).await {
+                            Ok(mut conn) => {
+                                conn.send_challenge().await?;
+                                connections.push(conn);
+                                maxima.lock().await.set_lsx_connections(connections.len() as u16);
+                                maxima.lock().await.set_player_started();
+                            }
+                            Err(e) => warn!("Failed to establish LSX connection: {}", e),
+                        }
+                    }
+                    Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                        sleep(Duration::from_millis(5)).await;
+                    }
+                    Err(e) => return Err(LSXServerError::Io(e)),
                 }
-                return Err(LSXServerError::Io(err));
             }
-        };
-
-        info!("New LSX connection: {:?}", addr);
-
-        let conn = Connection::new(maxima.clone(), socket).await;
-        if conn.is_err() {
-            warn!(
-                "Failed to establish LSX connection: {}",
-                conn.err().unwrap()
-            );
-            continue;
+            _ = sleep(Duration::from_millis(5)) => {
+                // YOUUUUUUUU SHALL NOT BLOCK !
+            }
         }
-
-        let mut conn = conn.unwrap();
-        conn.send_challenge().await?;
-        connections.push(conn);
-
-        let mut maxima = maxima.lock().await;
-        maxima.set_lsx_connections(connections.len() as u16);
-        maxima.set_player_started();
     }
 }

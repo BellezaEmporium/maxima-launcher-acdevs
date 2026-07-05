@@ -311,7 +311,7 @@ pub async fn start_game(
     let launch_id = Uuid::new_v4().to_string();
 
     child
-        .current_dir(PathBuf::from(path).safe_parent()?)
+        .current_dir(PathBuf::from(dir))
         .env("MXLaunchId", &launch_id)
         .env("EAAuthCode", "unavailable")
         .env("EAEgsProxyIpcPort", "0")
@@ -343,7 +343,7 @@ pub async fn start_game(
         .env("EAOnErrorExitRetCode", "1");
 
     match mode {
-        LaunchMode::Offline(_) => todo!(),
+        LaunchMode::Offline(_) => return Err(LaunchError::Offline),
         LaunchMode::Online(ref offer_id) => {
             let short_token = request_opaque_ooa_token(&access_token).await?;
 
@@ -362,7 +362,7 @@ pub async fn start_game(
         }
     };
 
-    let child = child.spawn().expect("Failed to start child");
+    let child = child.spawn().map_err(|e| LaunchError::Native(e.into()))?;
 
     maxima.playing = Some(ActiveGameContext::new(
         &launch_id,

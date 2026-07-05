@@ -161,8 +161,7 @@ impl GameDownloader {
         let total_bytes = entries
             .iter()
             .map(|x| *x.compressed_size() as usize)
-            .sum::<usize>()
-            + 1; // Add 1 to account for running touchup at the end. Bad solution, but we're a bit rushed
+            .sum::<usize>(); // mmmph a good amount of bytes, eat that Beton Brutal
 
         Ok(GameDownloader {
             offer_id: game.offer_id.to_owned(),
@@ -232,44 +231,35 @@ impl GameDownloader {
         for ele in entries.iter().take(total_count) {
             let downloader = downloader_arc.clone();
             let ele = ele.clone();
-
             let cancel_token = cancel_token.clone();
             let completed_bytes = completed_bytes.clone();
-
             handles.push(async move {
-                if ele.name().contains("Cleanup") {
-                    info!("Ele: {:?}", ele);
-                }
-
                 tokio::select! {
                     result = downloader.download_single_file(&ele, Some(Box::new(move |bytes| {
                         completed_bytes.fetch_add(bytes, Ordering::SeqCst);
-                    }))) => {
-                        if let Err(err) = result {
-                            error!("File download failed: {}", err);
-                        }
-                    },
+                    }))) => result.map(|_| ()).map_err(DownloaderError::from),
                     _ = cancel_token.cancelled() => {
                         info!("Download of {} cancelled", ele.name());
+                        Ok(())
                     },
                 }
             });
         }
 
-        let _results = futures::stream::iter(handles)
+        let results: Vec<Result<(), DownloaderError>> = futures::stream::iter(handles)
             .buffer_unordered(16)
-            .collect::<Vec<_>>()
+            .collect()
             .await;
 
-        let path = downloader_arc.path();
+        for result in results {
+            result?;
+        }
 
+        let path = downloader_arc.path();
         info!("Files downloaded, running touchup...");
         let manifest = manifest::read(path.join(MANIFEST_RELATIVE_PATH)).await?;
-
         manifest.run_touchup(path).await?;
         info!("Installation finished!");
-
-        completed_bytes.fetch_add(1, Ordering::SeqCst);
 
         notify.notify_one();
         Ok(())
@@ -361,6 +351,8 @@ impl ContentManager {
             return Err(ContentManagerError::DownloadInProgress);
         }
 
+        self.queue.queued.retain(|g| g.offer_id != game.offer_id);
+
         self.queue.current = Some(game.clone());
         self.queue.save().await?;
 
@@ -376,22 +368,12 @@ impl ContentManager {
                 current.cancel();
                 self.current = None;
                 self.queue.current = None;
-
-                if let Some(game) = self.queue.queued.pop() {
-                    self.install_now(game).await?;
-                }
-
                 self.queue.save().await?;
                 return Ok(());
             }
         }
 
-        let pos = self
-            .queue
-            .queued
-            .iter()
-            .position(|g| g.offer_id == offer_id);
-        if let Some(pos) = pos {
+        if let Some(pos) = self.queue.queued.iter().position(|g| g.offer_id == offer_id) {
             self.queue.queued.remove(pos);
             self.queue.save().await?;
             return Ok(());
@@ -413,8 +395,9 @@ impl ContentManager {
 
                 self.queue.queued.insert(0, game);
 
-                if let Some(next) = self.queue.queued.pop() {
-                    self.install_now(next).await?;
+                if let Some(game) = self.queue.queued.first().cloned() {
+                    self.queue.queued.remove(0);
+                    self.install_now(game).await?;
                 }
 
                 self.queue.save().await?;
@@ -442,30 +425,35 @@ impl ContentManager {
     }
 
     pub(crate) async fn update(&mut self) -> Result<Option<MaximaEvent>, ContentManagerError> {
+        if self.current.is_none() && self.queue.current.is_none() && !self.queue.queued.is_empty() {
+            if let Some(game) = self.queue.queued.pop() {
+                self.install_direct(game).await?;
+            }
+        }
         let mut event = None;
 
         if let Some(current) = &self.current {
-            if current.is_done() {
-                event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
-                self.current = None;
-                self.queue.current = None;
-
-                if let Some(game) = self.queue.queued.pop() {
-                    self.install_now(game).await?;
+            if let Some(current) = &self.current {
+                if let Some(err) = current.take_error() {
+                    let offer_id = current.offer_id().to_owned();
+                    self.current = None;
+                    self.queue.current = None;
+                    if let Some(game) = self.queue.queued.first().cloned() {
+                        self.queue.queued.remove(0);
+                        self.install_now(game).await?;
+                    }
+                    self.queue.save().await?;
+                    event = Some(MaximaEvent::InstallFailed(offer_id, err.to_string()));
+                } else if current.is_done() {
+                    event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
+                    self.current = None;
+                    self.queue.current = None;
+                    if let Some(game) = self.queue.queued.first().cloned() {
+                        self.queue.queued.remove(0);
+                        self.install_now(game).await?;
+                    }
+                    self.queue.save().await?;
                 }
-
-                self.queue.save().await?;
-            } else if let Some(err) = current.take_error() {
-                let offer_id = current.offer_id().to_owned();
-                self.current = None;
-                self.queue.current = None;
-
-                if let Some(game) = self.queue.queued.pop() {
-                    self.install_now(game).await?;
-                }
-
-                self.queue.save().await?;
-                event = Some(MaximaEvent::InstallFailed(offer_id, err.to_string()));
             }
         }
 

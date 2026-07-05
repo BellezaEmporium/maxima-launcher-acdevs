@@ -34,15 +34,8 @@ use maxima::{
         registry::{RegistryError, check_registry_validity, set_up_registry},
     },
 };
-use std::{
-    path::PathBuf,
-    time::{Duration, SystemTime},
-};
-use tokio::sync::mpsc::{
-    Sender, UnboundedReceiver, UnboundedSender,
-    error::{SendError, TryRecvError},
-    unbounded_channel,
-};
+use std::{path::PathBuf, time::Duration};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 // TODO(headassbtw): integrate these all into the enums
 pub struct InteractThreadLoginResponse {
@@ -182,9 +175,7 @@ impl BridgeThread {
             queue.push(game.offer_id().to_owned());
         }
 
-        backend_responder
-            .send(MaximaLibResponse::DownloadQueueUpdate(current, queue))
-            .unwrap();
+        backend_responder.send(MaximaLibResponse::DownloadQueueUpdate(current, queue)).ok();
     }
 
     pub fn new(
@@ -316,8 +307,8 @@ impl BridgeThread {
             backend_responder.send(MaximaLibResponse::LoginCacheEmpty).ok();
 
             'login: loop {
-                let Ok(request) = backend_cmd_listener.try_recv() else {
-                    continue;
+                let Some(request) = backend_cmd_listener.recv().await else {
+                    return Ok(());
                 };
                 match request {
                     MaximaLibRequest::LoginRequestOauth => {
@@ -326,9 +317,7 @@ impl BridgeThread {
                             .expect("// TODO(headassbtw): panic message");
                         break 'login;
                     }
-                    MaximaLibRequest::ShutdownRequest => {
-                        return Ok(());
-                    }
+                    MaximaLibRequest::ShutdownRequest => return Ok(()),
                     _ => {}
                 }
             }
@@ -385,17 +374,17 @@ impl BridgeThread {
             rtm_responder,
         );
 
-        let mut next_tick = SystemTime::now() + Duration::from_millis(50);
+        let mut next_tick = tokio::time::Instant::now() + Duration::from_millis(50);
         let mut playing_cache: Option<String> = None;
 
         'main: loop {
-            let now = SystemTime::now();
-
-            if now >= next_tick {
-                next_tick = now + Duration::from_millis(50);
+            tokio::select! {
+            _ = tokio::time::sleep_until(next_tick) => {
+                next_tick = tokio::time::Instant::now() + Duration::from_millis(50);
                 let mut maxima = maxima_arc.lock().await;
                 maxima.update().await;
 
+                // progress reporting
                 match maxima.playing() {
                     Some(ctx) if playing_cache.is_none() => {
                         if let Some(offer) = ctx.offer() {
@@ -414,167 +403,170 @@ impl BridgeThread {
                     _ => {}
                 }
 
-                if let Some(dl) = maxima.content_manager().current() {
-                    backend_responder
-                        .send(MaximaLibResponse::DownloadProgressChanged(
-                            dl.offer_id().to_string(),
-                            InteractThreadDownloadProgressResponse {
-                                bytes: dl.bytes_downloaded(),
-                                bytes_total: dl.bytes_total(),
-                            },
-                        ))
-                        .ok();
-                }
-
                 for ev in maxima.consume_pending_events() {
                     match ev {
-                        MaximaEvent::ReceivedLSXRequest(_, _) => {}
                         MaximaEvent::InstallFinished(offer_id) => {
-                            backend_responder
-                                .send(MaximaLibResponse::DownloadFinished(offer_id))
-                                .ok();
+                            backend_responder.send(MaximaLibResponse::DownloadFinished(offer_id)).ok();
                             Self::update_queue(maxima.content_manager(), backend_responder.clone());
                         }
                         MaximaEvent::InstallFailed(offer_id, reason) => {
-                            backend_responder
-                                .send(MaximaLibResponse::DownloadFailed(offer_id, reason))
-                                .ok();
+                            backend_responder.send(MaximaLibResponse::DownloadFailed(offer_id, reason)).ok();
                             Self::update_queue(maxima.content_manager(), backend_responder.clone());
                         }
+                        _ => {}
                     }
                 }
             }
 
-            let Some(request) = backend_cmd_listener.recv().await else {
-                continue 'main;
-            };
-
-            let result: Result<(), BackendError> = match request {
-                MaximaLibRequest::LoginRequestOauth | MaximaLibRequest::StartService => {
-                    error!("bro tried to log in twice");
-                    Ok(())
-                }
-
-                MaximaLibRequest::GetGamesRequest => {
-                    let maxima = maxima_arc.clone();
-                    let responder = backend_responder.clone();
-                    let remote = remote_provider_channel.clone();
-                    let context = ctx.clone();
-                    tokio::task::spawn(async move {
-                        if let Err(e) =
-                            get_games_request(maxima, responder.clone(), remote, &context).await
-                        {
-                            let _ =
-                                responder.send(MaximaLibResponse::NonFatalError(Box::from(e))).ok();
-                        }
-                    });
-                    Ok(())
-                }
-                MaximaLibRequest::GetFriendsRequest => {
-                    let f = async || {
-                        get_friends_request(
-                            maxima_arc.clone(),
-                            backend_responder.clone(),
-                            remote_provider_channel.clone(),
-                            ctx,
-                        )
-                        .await
-                    };
-                    f().await
-                }
-                MaximaLibRequest::GetGameDetailsRequest(slug) => {
-                    let f = async || {
-                        game_details_request(
-                            maxima_arc.clone(),
-                            slug,
-                            backend_responder.clone(),
-                            ctx,
-                        )
-                        .await
-                    };
-                    f().await
-                }
-                MaximaLibRequest::LocateGameRequest(mut path) => {
-                    #[cfg(unix)]
-                    maxima::core::launch::mx_linux_setup().await?;
-
-                    // strip trailing slash
-                    if path.ends_with('/') || path.ends_with('\\') {
-                        path.pop();
+            request = backend_cmd_listener.recv() => {
+                let Some(request) = request else {
+                    continue 'main;
+                };
+                let result = match request {
+                    MaximaLibRequest::LoginRequestOauth | MaximaLibRequest::StartService => {
+                        error!("bro tried to log in twice");
+                        Ok(())
                     }
 
-                    let path = PathBuf::from(path);
-                    let manifest_path = path.join(MANIFEST_RELATIVE_PATH);
-
-                    let response = match manifest::read(manifest_path.clone()).await {
-                        Ok(manifest) => match manifest.run_touchup(&path).await {
-                            Ok(()) => InteractThreadLocateGameResponse::Success,
-                            Err(err) => {
-                                warn!("Touchup failed during locate, treating as success: {}", err);
-                                InteractThreadLocateGameResponse::Success
+                    MaximaLibRequest::GetGamesRequest => {
+                        let maxima = maxima_arc.clone();
+                        let responder = backend_responder.clone();
+                        let remote = remote_provider_channel.clone();
+                        let context = ctx.clone();
+                        tokio::task::spawn(async move {
+                            if let Err(e) =
+                                get_games_request(maxima, responder.clone(), remote, &context).await
+                            {
+                                let _ =
+                                    responder.send(MaximaLibResponse::NonFatalError(Box::from(e))).ok();
                             }
-                        },
-                        Err(err) => InteractThreadLocateGameResponse::Error(
-                            InteractThreadLocateGameFailure {
-                                reason: err,
-                                xml_path: manifest_path.to_string_lossy().into_owned(),
-                            },
-                        ),
-                    };
+                        });
+                        Ok(())
+                    }
+                    MaximaLibRequest::GetFriendsRequest => {
+                        let f = async || {
+                            get_friends_request(
+                                maxima_arc.clone(),
+                                backend_responder.clone(),
+                                remote_provider_channel.clone(),
+                                ctx,
+                            )
+                            .await
+                        };
+                        f().await
+                    }
+                    MaximaLibRequest::GetGameDetailsRequest(slug) => {
+                        let f = async || {
+                            game_details_request(
+                                maxima_arc.clone(),
+                                slug,
+                                backend_responder.clone(),
+                                ctx,
+                            )
+                            .await
+                        };
+                        f().await
+                    }
+                    MaximaLibRequest::LocateGameRequest(mut path) => {
+                        #[cfg(unix)]
+                        maxima::core::launch::mx_linux_setup().await?;
 
-                    let _ = backend_responder
-                        .send(MaximaLibResponse::LocateGameResponse(response))
-                        .ok();
-                    info!("finished locating");
-                    ctx.request_repaint();
-                    Ok(())
-                }
+                        if path.ends_with('/') || path.ends_with('\\') {
+                            path.pop();
+                        }
 
-                MaximaLibRequest::InstallGameRequest(offer, path) => {
-                    let mut maxima = maxima_arc.lock().await;
-                    let builds =
-                        maxima.content_manager().service().available_builds(&offer).await?;
-                    let build = builds.live_build().ok_or(BackendError::NoLiveBuildAvailable)?;
+                        let path = PathBuf::from(path);
+                        let manifest_path = path.join(MANIFEST_RELATIVE_PATH);
 
-                    let game = QueuedGameBuilder::default()
-                        .offer_id(offer)
-                        .build_id(build.build_id().to_owned())
-                        .path(path)
-                        .build()?;
-                    Ok(maxima.content_manager().add_install(game).await?)
-                }
-                MaximaLibRequest::CancelInstallRequest(offer) => {
-                    let mut maxima = maxima_arc.lock().await;
-                    maxima.content_manager().cancel_install(&offer).await?;
-                    Self::update_queue(maxima.content_manager(), backend_responder.clone());
-                    Ok(())
-                }
-                MaximaLibRequest::PauseInstallRequest(offer) => {
-                    let mut maxima = maxima_arc.lock().await;
-                    maxima.content_manager().pause_install(&offer).await?;
-                    Self::update_queue(maxima.content_manager(), backend_responder.clone());
-                    Ok(())
-                }
-                MaximaLibRequest::MoveInstallToTopRequest(offer) => {
-                    let mut maxima = maxima_arc.lock().await;
-                    maxima.content_manager().move_install_to_top(&offer).await?;
-                    Self::update_queue(maxima.content_manager(), backend_responder.clone());
-                    Ok(())
-                }
-                MaximaLibRequest::StartGameRequest(info, settings) => {
-                    Ok(start_game_request(maxima_arc.clone(), info, settings).await?)
-                }
-                MaximaLibRequest::ShutdownRequest => {
-                    info!("BridgeThread: received shutdown request");
-                    break 'main Ok(());
-                }
-            };
+                        let response = match manifest::read(manifest_path.clone()).await {
+                            Ok(manifest) => {
+                                let should_force_touchup = match tokio::fs::read_to_string(&manifest_path).await {
+                                    Ok(xml) => {
+                                        xml.contains("forceTouchupInstallerAfterUpdate=\"true\"")
+                                            || xml.contains("<forceTouchupInstallerAfterUpdate>true</forceTouchupInstallerAfterUpdate>")
+                                    }
+                                    Err(err) => {
+                                        warn!(
+                                            "Failed to inspect forceTouchupInstallerAfterUpdate during locate ({}), skipping touchup",
+                                            err
+                                        );
+                                        false
+                                    }
+                                };
 
-            if let Err(err) = result {
-                let _ =
-                    backend_responder.send(MaximaLibResponse::NonFatalError(Box::from(err))).ok();
-            }
+                                if should_force_touchup {
+                                    match manifest.run_touchup(&path).await {
+                                        Ok(()) => InteractThreadLocateGameResponse::Success,
+                                        Err(err) => {
+                                            warn!("Touchup failed during locate, treating as success: {}", err);
+                                            InteractThreadLocateGameResponse::Success
+                                        }
+                                    }
+                                } else {
+                                    InteractThreadLocateGameResponse::Success
+                                }
+                            }
+                            Err(err) => InteractThreadLocateGameResponse::Error(
+                                InteractThreadLocateGameFailure {
+                                    reason: err,
+                                    xml_path: manifest_path.to_string_lossy().into_owned(),
+                                },
+                            ),
+                        };
 
+                        let _ = backend_responder
+                            .send(MaximaLibResponse::LocateGameResponse(response))
+                            .ok();
+                        info!("finished locating");
+                        ctx.request_repaint();
+                        Ok(())
+                    }
+
+                    MaximaLibRequest::InstallGameRequest(offer, path) => {
+                        let mut maxima = maxima_arc.lock().await;
+                        let builds = maxima.content_manager().service().available_builds(&offer).await?;
+                        let build = builds.live_build().ok_or(BackendError::NoLiveBuildAvailable)?;
+                        let game = QueuedGameBuilder::default()
+                            .offer_id(offer)
+                            .build_id(build.build_id().to_owned())
+                            .path(path)
+                            .build()?;
+                        maxima.content_manager().add_install(game).await?;
+                        Self::update_queue(maxima.content_manager(), backend_responder.clone()); // ← add this
+                        Ok(())
+                    }
+                    MaximaLibRequest::CancelInstallRequest(offer) => {
+                        let mut maxima = maxima_arc.lock().await;
+                        maxima.content_manager().cancel_install(&offer).await?;
+                        Self::update_queue(maxima.content_manager(), backend_responder.clone());
+                        Ok(())
+                    }
+                    MaximaLibRequest::PauseInstallRequest(offer) => {
+                        let mut maxima = maxima_arc.lock().await;
+                        maxima.content_manager().pause_install(&offer).await?;
+                        Self::update_queue(maxima.content_manager(), backend_responder.clone());
+                        Ok(())
+                    }
+                    MaximaLibRequest::MoveInstallToTopRequest(offer) => {
+                        let mut maxima = maxima_arc.lock().await;
+                        maxima.content_manager().move_install_to_top(&offer).await?;
+                        Self::update_queue(maxima.content_manager(), backend_responder.clone());
+                        Ok(())
+                    }
+                    MaximaLibRequest::StartGameRequest(info, settings) => {
+                        Ok(start_game_request(maxima_arc.clone(), info, settings).await?)
+                    }
+                    MaximaLibRequest::ShutdownRequest => {
+                        info!("BridgeThread: received shutdown request");
+                        break 'main Ok(());
+                    }
+                };
+
+                if let Err(err) = result {
+                            backend_responder.send(MaximaLibResponse::NonFatalError(Box::from(err))).ok();
+                        }
+                    }
+                }
             puffin::GlobalProfiler::lock().new_frame();
         }
     }

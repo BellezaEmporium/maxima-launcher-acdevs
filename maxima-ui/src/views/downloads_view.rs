@@ -22,7 +22,9 @@ fn render_queued(app: &mut MaximaEguiApp, ui: &mut Ui, game: &QueuedDownload, is
     let container_size = vec2(ui.available_width(), 160.0);
     ui.allocate_ui(container_size, |ui| {
         let game_dl = game;
-        let game = app.games.get_mut(&game.slug).unwrap();
+        let Some(game) = app.games.get_mut(&game_dl.slug) else {
+            return; // game not loaded yet, skip rendering this frame
+        };
         let (hero, logo) = {
             (
                 app.img_cache.get(crate::ui_image::UIImageType::Hero(game.slug.clone())),
@@ -172,6 +174,12 @@ fn render_queued(app: &mut MaximaEguiApp, ui: &mut Ui, game: &QueuedDownload, is
                     .backend
                     .backend_commander
                     .send(MaximaLibRequest::CancelInstallRequest(offer));
+            }
+            if ui.put(right_button_rect, egui::Button::new("⏸")).clicked() {
+                let _ = app
+                    .backend
+                    .backend_commander
+                    .send(MaximaLibRequest::PauseInstallRequest(game_dl.offer.clone()));
             }
             if ui.put(right_button_rect, egui::Button::new("⮉")).clicked() {
                 let _ = app.backend.backend_commander.send(

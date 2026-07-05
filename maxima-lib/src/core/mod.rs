@@ -274,8 +274,8 @@ impl Maxima {
         Ok(user)
     }
 
-    pub async fn friends(&self, page: u32) -> Result<Vec<ServicePlayer>, ServiceLayerError> {
-        let cache_key = format!("friends_{}", page);
+    pub async fn friends(&self, offset: u32) -> Result<Vec<ServicePlayer>, ServiceLayerError> {
+        let cache_key = format!("friends_{}", offset);
         if let Some(cached) = self.request_cache.get(&cache_key) {
             return Ok(cached);
         }
@@ -286,7 +286,7 @@ impl Maxima {
                 SERVICE_REQUEST_GETMYFRIENDS,
                 ServiceGetMyFriendsRequestBuilder::default()
                     .limit(100)
-                    .offset(page)
+                    .offset(offset)
                     .is_mutual_friends_enabled(false)
                     .build()
                     .unwrap(),
@@ -309,9 +309,7 @@ impl Maxima {
     }
 
     pub fn consume_pending_events(&mut self) -> Vec<MaximaEvent> {
-        let events = self.pending_events.clone();
-        self.pending_events.clear();
-        events
+        std::mem::take(&mut self.pending_events)
     }
 
     pub async fn player_by_id(&self, id: &str) -> Result<ServicePlayer, ServiceLayerError> {

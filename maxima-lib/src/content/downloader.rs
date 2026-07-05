@@ -2,8 +2,7 @@ use std::{
     io::{self, Cursor, Read, SeekFrom},
     path::{Path, PathBuf},
     pin::Pin,
-    prelude,
-    sync::{Arc, Mutex},
+    sync::Arc,
     task,
 };
 
@@ -26,7 +25,7 @@ use thiserror::Error;
 use tokio::{
     fs::{File, OpenOptions, create_dir, create_dir_all},
     io::{AsyncSeekExt, AsyncWrite, BufReader, BufWriter},
-    runtime::Handle,
+    sync::Mutex as AsyncMutex,
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
@@ -37,53 +36,50 @@ async fn zstate_path(id: &str, path: &str) -> Result<PathBuf, DownloaderError> {
     Ok(path)
 }
 
-#[async_trait]
 trait DownloadDecoder: Send {
     fn save_state(&mut self, buf: &mut BytesMut);
     fn restore_state(&mut self, buf: &mut Bytes);
-
     fn seek(&mut self, pos: SeekFrom) -> Result<(), DownloaderError>;
-
     fn write_in_pos(&self) -> u64;
     fn write_out_pos(&self) -> u64;
-
-    fn get_mut(&mut self) -> Arc<Mutex<BufWriter<File>>>;
+    fn get_mut(&mut self) -> Arc<AsyncMutex<BufWriter<File>>>;
+    fn supports_resume(&self) -> bool {
+        true
+    }
 }
 
 struct ZLibDeflateDecoder {
     decompress: flate2::Decompress,
-    writer: Arc<Mutex<tokio::io::BufWriter<tokio::fs::File>>>,
+    writer: Arc<AsyncMutex<BufWriter<File>>>,
 }
 
 impl ZLibDeflateDecoder {
     fn new(writer: BufWriter<File>) -> Self {
         Self {
             decompress: Decompress::new(true),
-            writer: Arc::new(Mutex::new(writer)),
+            writer: Arc::new(AsyncMutex::new(writer)),
         }
     }
 }
 
-#[async_trait]
 impl DownloadDecoder for ZLibDeflateDecoder {
     fn save_state(&mut self, buf: &mut BytesMut) {
-        // State serialization is disabled - flate2 doesn't expose raw zlib state
+        // State serialization disabled — flate2 doesn't expose raw zlib state
         let _ = buf;
     }
 
     fn restore_state(&mut self, buf: &mut Bytes) {
-        // State deserialization is disabled - flate2 doesn't expose raw zlib state
+        // State deserialization disabled — flate2 doesn't expose raw zlib state
         self.decompress.reset(false);
         let _ = buf;
     }
 
     fn seek(&mut self, pos: SeekFrom) -> Result<(), DownloaderError> {
-        let mut file = self.writer.lock().unwrap();
-
-        let handle = Handle::current();
-        let _ = handle.enter();
-        futures::executor::block_on(file.seek(pos))?;
-
+        let writer = self.writer.clone();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async move { writer.lock().await.seek(pos).await })
+        })?;
         Ok(())
     }
 
@@ -95,26 +91,29 @@ impl DownloadDecoder for ZLibDeflateDecoder {
         self.decompress.total_out()
     }
 
-    fn get_mut(&mut self) -> Arc<Mutex<BufWriter<File>>> {
+    fn get_mut(&mut self) -> Arc<AsyncMutex<BufWriter<File>>> {
         self.writer.clone()
+    }
+
+    fn supports_resume(&self) -> bool {
+        false
     }
 }
 
 struct NoopDecoder {
-    writer: Arc<Mutex<BufWriter<File>>>,
+    writer: Arc<AsyncMutex<BufWriter<File>>>,
     pos: u64,
 }
 
 impl NoopDecoder {
     pub fn new(writer: BufWriter<File>) -> Self {
         Self {
-            writer: Arc::new(Mutex::new(writer)),
+            writer: Arc::new(AsyncMutex::new(writer)),
             pos: 0,
         }
     }
 }
 
-#[async_trait]
 impl DownloadDecoder for NoopDecoder {
     fn save_state(&mut self, buf: &mut BytesMut) {
         buf.put_u64(self.pos);
@@ -125,12 +124,13 @@ impl DownloadDecoder for NoopDecoder {
     }
 
     fn seek(&mut self, pos: SeekFrom) -> Result<(), DownloaderError> {
-        let mut file = self.writer.lock().unwrap();
-
-        let handle = Handle::current();
-        let _ = handle.enter();
-        futures::executor::block_on(file.seek(pos))?;
-
+        let writer = self.writer.clone();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async move {
+                let mut file = writer.lock().await;
+                file.seek(pos).await
+            })
+        })?;
         Ok(())
     }
 
@@ -142,38 +142,20 @@ impl DownloadDecoder for NoopDecoder {
         self.pos
     }
 
-    fn get_mut(&mut self) -> Arc<Mutex<BufWriter<File>>> {
+    fn get_mut(&mut self) -> Arc<AsyncMutex<BufWriter<File>>> {
         self.writer.clone()
     }
 }
 
 struct AsyncWriterWrapper<'a> {
-    id: String,
-    path: String,
-    zlib_state_file: tokio::fs::File,
     decoder: &'a mut Box<dyn DownloadDecoder>,
-    inner: Arc<Mutex<BufWriter<File>>>,
+    inner: Arc<AsyncMutex<BufWriter<File>>>,
 }
 
 impl<'a> AsyncWriterWrapper<'a> {
-    async fn new(
-        id: String,
-        path: String,
-        decoder: &'a mut Box<dyn DownloadDecoder>,
-    ) -> Result<Self, DownloaderError> {
+    async fn new(decoder: &'a mut Box<dyn DownloadDecoder>) -> Self {
         let inner = decoder.get_mut();
-        Ok(AsyncWriterWrapper {
-            id: id.to_owned(),
-            path: path.to_owned(),
-            zlib_state_file: tokio::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(zstate_path(&id, &path).await?)
-                .await?,
-            decoder,
-            inner,
-        })
+        AsyncWriterWrapper { decoder, inner }
     }
 }
 
@@ -182,41 +164,46 @@ impl<'a> AsyncWrite for AsyncWriterWrapper<'a> {
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
         buf: &[u8],
-    ) -> task::Poll<prelude::v1::Result<usize, io::Error>> {
-        let poll_result = {
-            let mut binding = self.inner.lock().unwrap();
-            let inner = Pin::new(&mut *binding);
-            inner.poll_write(cx, buf)
-        };
-
-        // State serialization is disabled for now.
-        // let mut bytes = BytesMut::new();
-        // self.decoder.save_state(&mut bytes);
-
-        // self.zlib_state_file.seek(SeekFrom::Start(0))?;
-        // self.zlib_state_file.write(&bytes)?;
-
-        poll_result
+    ) -> task::Poll<Result<usize, io::Error>> {
+        match self.inner.try_lock() {
+            Ok(mut guard) => Pin::new(&mut *guard).poll_write(cx, buf),
+            Err(_) => {
+                cx.waker().wake_by_ref();
+                task::Poll::Pending
+            }
+        }
     }
 
     fn poll_flush(
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<prelude::v1::Result<(), io::Error>> {
-        Pin::new(&mut *self.inner.lock().unwrap()).poll_flush(cx)
+    ) -> task::Poll<Result<(), io::Error>> {
+        match self.inner.try_lock() {
+            Ok(mut guard) => Pin::new(&mut *guard).poll_flush(cx),
+            Err(_) => {
+                cx.waker().wake_by_ref();
+                task::Poll::Pending
+            }
+        }
     }
 
     fn poll_shutdown(
         self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
-    ) -> task::Poll<prelude::v1::Result<(), io::Error>> {
-        Pin::new(&mut *self.inner.lock().unwrap()).poll_shutdown(cx)
+    ) -> task::Poll<Result<(), io::Error>> {
+        match self.inner.try_lock() {
+            Ok(mut guard) => Pin::new(&mut *guard).poll_shutdown(cx),
+            Err(_) => {
+                cx.waker().wake_by_ref();
+                task::Poll::Pending
+            }
+        }
     }
 }
 
 #[derive(Error, Debug)]
 pub enum DownloadError {
-    #[error("download failed ({0} bytes")]
+    #[error("download failed after {0} bytes")]
     DownloadFailed(usize),
     #[error("failed to download chunk `{entry}`: {error}")]
     ChunkDownload {
@@ -279,8 +266,15 @@ impl<'a> EntryDownloadRequest<'a> {
     ) -> Result<EntryDownloadState, DownloaderError> {
         let path = context.path.join(entry.name());
 
-        let file_size = File::open(&path).await?.metadata().await?.len() as i64;
+        let metadata = match tokio::fs::metadata(&path).await {
+            Ok(m) => m,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(EntryDownloadState::Fresh);
+            }
+            Err(e) => return Err(e.into()),
+        };
 
+        let file_size = metadata.len() as i64;
         if file_size == 0 {
             return Ok(EntryDownloadState::Fresh);
         }
@@ -289,54 +283,65 @@ impl<'a> EntryDownloadRequest<'a> {
         let size_match = entry_size == file_size;
 
         if !size_match {
-            warn!("Size mismatch: {}/{}", entry_size, file_size);
+            warn!(
+                "Size mismatch for {}: expected={} actual={}",
+                entry.name(),
+                entry_size,
+                file_size
+            );
             if file_size > entry_size {
                 return Ok(EntryDownloadState::Borked);
             }
             return Ok(EntryDownloadState::Resumable);
         }
 
-        // We must be calculating the hash incorrectly or something
-        // let hash = match hash_file_crc32(&path) {
-        //     Ok(hash) => hash,
-        //     Err(_) => {
-        //         warn!("Failed to retrieve hash for file {}", entry.name());
-        //         0
-        //     }
-        // };
-
-        // let hash_match = *entry.crc32() != hash;
-        // if !hash_match {
-        //     warn!("Hash mismatch");
-        //     return EntryDownloadState::Borked;
-        // }
-
         Ok(EntryDownloadState::Complete)
     }
 
     async fn download(&mut self) -> Result<(), DownloadError> {
-        let mut tries = 0;
-        while tries < 5 {
-            let start = self.decoder.write_in_pos() as i64;
+        let mut last_err = None;
 
-            debug!(
-                "Downloading {} from {} to {} ({})",
-                self.entry.name(),
-                start,
-                self.entry.compressed_size(),
-                self.entry.uncompressed_size()
-            );
+        for attempt in 1..=5 {
+            let start = self.decoder.write_in_pos() as i64;
             let end = *self.entry.compressed_size();
 
-            let result = self.download_range(start, end).await;
-            if result.is_ok() {
-                break;
-            }
+            debug!(
+                "Downloading {} bytes={}-{} (uncompressed: {}), attempt {}/5",
+                self.entry.name(),
+                start,
+                end,
+                self.entry.uncompressed_size(),
+                attempt,
+            );
 
-            tries += 1;
+            match self.download_range(start, end).await {
+                Ok(()) => return Ok(()),
+                Err(DownloaderError::Download(err)) => {
+                    warn!(
+                        "Download attempt {}/5 failed for {}: {}",
+                        attempt,
+                        self.entry.name(),
+                        err
+                    );
+                    last_err = Some(err);
+                }
+                Err(other) => {
+                    warn!(
+                        "Download attempt {}/5 failed for {}: {}",
+                        attempt,
+                        self.entry.name(),
+                        other
+                    );
+                    last_err = Some(DownloadError::DownloadFailed(
+                        self.decoder.write_in_pos() as usize
+                    ));
+                }
+            }
         }
 
-        Ok(())
+        Err(last_err.unwrap_or(DownloadError::DownloadFailed(
+            self.decoder.write_in_pos() as usize
+        )))
     }
 
     /// End is not inclusive
@@ -344,7 +349,7 @@ impl<'a> EntryDownloadRequest<'a> {
         let offset = self.entry.data_offset();
         let range = format!("bytes={}-{}", offset + start, offset + end - 1);
 
-        let data = match self
+        let response = match self
             .client
             .get(self.url)
             .header("range", range)
@@ -353,7 +358,6 @@ impl<'a> EntryDownloadRequest<'a> {
         {
             Ok(res) => res,
             Err(err) => {
-                error!("Failed to download ({}): {}", self.entry.name(), err);
                 return Err(DownloaderError::Download(DownloadError::ChunkDownload {
                     entry: self.entry.name().clone(),
                     error: err,
@@ -361,28 +365,52 @@ impl<'a> EntryDownloadRequest<'a> {
             }
         };
 
-        let stream = data.bytes_stream();
+        if response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+            && response.status() != reqwest::StatusCode::OK
+        {
+            return Err(DownloaderError::Http(response.status()));
+        }
+
+        let stream = response.bytes_stream();
         let counting_stream = ByteCountingStream::new(stream, self.callback.as_ref());
-        let stream = counting_stream.into_async_read();
-        let mut stream_reader = BufReader::new(stream.compat());
 
-        // State deserialization is disabled for now.
-        // let out_pos = self.decoder.write_out_pos();
-        // self.decoder.seek(SeekFrom::Start(out_pos));
+        let writer_arc = self.decoder.get_mut();
+        let mut writer = writer_arc.lock().await;
 
-        let mut wrapper = AsyncWriterWrapper::new(
-            self.context.id.to_owned(),
-            self.entry.name().to_owned(),
-            &mut self.decoder,
-        )
-        .await?;
+        match self.entry.compression_type() {
+            CompressionType::None => {
+                // No decompression — stream straight to file
+                let async_read = counting_stream.into_async_read();
+                let mut reader = BufReader::new(async_read.compat());
+                if let Err(err) = tokio::io::copy(&mut reader, &mut *writer).await {
+                    return Err(DownloaderError::Download(DownloadError::ChunkCopy {
+                        entry: self.entry.name().clone(),
+                        error: err,
+                    }));
+                }
+            }
+            CompressionType::Deflate => {
+                // Collect compressed bytes then decompress — avoids async/sync boundary issues with flate2
+                let compressed: Vec<u8> = counting_stream
+                    .try_fold(Vec::new(), |mut acc, chunk| async move {
+                        acc.extend_from_slice(&chunk);
+                        Ok(acc)
+                    })
+                    .await
+                    .map_err(|e| DownloaderError::Io(e))?;
 
-        let result = tokio::io::copy(&mut stream_reader, &mut wrapper).await;
-        if let Err(err) = result {
-            return Err(DownloaderError::Download(DownloadError::ChunkCopy {
-                entry: self.entry.name().clone(),
-                error: err,
-            }));
+                let mut decoder = BufreadDeflateDecoder::new(Cursor::new(&compressed));
+                let mut decompressed = Vec::with_capacity(*self.entry.uncompressed_size() as usize);
+                decoder.read_to_end(&mut decompressed)?;
+
+                let mut cursor = Cursor::new(decompressed);
+                if let Err(err) = tokio::io::copy(&mut cursor, &mut *writer).await {
+                    return Err(DownloaderError::Download(DownloadError::ChunkCopy {
+                        entry: self.entry.name().clone(),
+                        error: err,
+                    }));
+                }
+            }
         }
 
         Ok(())
@@ -440,8 +468,8 @@ impl ZipDownloader {
             .send()
             .await?;
 
-        if !response.status().is_success()
-            && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+        if response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+            && response.status() != reqwest::StatusCode::OK
         {
             return Err(DownloaderError::Http(response.status()));
         }
@@ -466,7 +494,6 @@ impl ZipDownloader {
                 let mut limited_reader = decoder.take(length);
                 let mut decompressed_data = Vec::with_capacity(length as usize);
                 limited_reader.read_to_end(&mut decompressed_data)?;
-
                 Bytes::from(decompressed_data)
             }
         };
@@ -481,17 +508,16 @@ impl ZipDownloader {
     ) -> Result<usize, DownloaderError> {
         let file_path = self.path.join(entry.name());
 
-        if !file_path.exists() {
-            if !file_path.safe_parent()?.exists() {
-                create_dir_all(&file_path.safe_parent()?).await?;
-            }
+        create_dir_all(file_path.safe_parent()?).await?;
 
-            if entry.name().ends_with("/") && !file_path.exists() {
-                // This is a folder, create the dir
-                debug!("{} is a directory", entry.name());
-                create_dir(file_path).await?;
-                return Ok(0);
+        if entry.name().ends_with('/') {
+            debug!("{} is a directory", entry.name());
+            match create_dir(&file_path).await {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e.into()),
             }
+            return Ok(0);
         }
 
         if *entry.uncompressed_size() == 0 {
@@ -503,13 +529,6 @@ impl ZipDownloader {
         debug!("Type: {:?}", entry.compression_type());
         debug!("Compressed Size: {}", entry.compressed_size());
         debug!("Offset: {}", offset);
-
-        let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&file_path)
-            .await?;
 
         let context = DownloadContext {
             id: self.id.to_owned(),
@@ -524,6 +543,13 @@ impl ZipDownloader {
             return Ok(0);
         }
 
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&file_path)
+            .await?;
+
         if state == EntryDownloadState::Borked {
             warn!("Found borked file {}", entry.name());
             file.set_len(*entry.uncompressed_size() as u64).await?;
@@ -537,12 +563,21 @@ impl ZipDownloader {
         };
 
         if state == EntryDownloadState::Resumable {
-            let state_file = zstate_path(&self.id, entry.name()).await?;
-            if state_file.exists() {
-                let mut buf = Bytes::from(tokio::fs::read(state_file).await?);
-                decoder.restore_state(&mut buf);
+            if decoder.supports_resume() {
+                let state_file = zstate_path(&self.id, entry.name()).await?;
+                if state_file.exists() {
+                    let mut buf = Bytes::from(tokio::fs::read(state_file).await?);
+                    decoder.restore_state(&mut buf);
+                } else {
+                    tokio::fs::create_dir_all(state_file.safe_parent()?).await?;
+                }
             } else {
-                tokio::fs::create_dir_all(state_file.safe_parent()?).await?;
+                warn!(
+                    "Decoder for {} does not support resume, restarting from scratch",
+                    entry.name()
+                );
+                decoder.get_mut().lock().await.get_mut().set_len(0).await?;
+                decoder.seek(SeekFrom::Start(0))?;
             }
         }
 
@@ -577,10 +612,6 @@ where
             callback,
         }
     }
-
-    fn byte_count(&self) -> usize {
-        self.byte_count
-    }
 }
 
 impl<'a, S> Stream for ByteCountingStream<'a, S>
@@ -596,11 +627,9 @@ where
         match self.inner.poll_next_unpin(cx) {
             std::task::Poll::Ready(Some(Ok(chunk))) => {
                 self.byte_count += chunk.len();
-
                 if let Some(callback) = &self.callback {
                     callback(chunk.len());
                 }
-
                 std::task::Poll::Ready(Some(Ok(chunk)))
             }
             std::task::Poll::Ready(Some(Err(err))) => {

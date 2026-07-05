@@ -2,7 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{core::manifest::ManifestError, util::native::platform_path};
+use crate::{
+    core::manifest::{ManifestError, bytes_to_string},
+    util::native::platform_path,
+};
 use derive_getters::Getters;
 use serde::Deserialize;
 
@@ -238,20 +241,6 @@ fn split_args(s: &str) -> Result<Vec<String>, ManifestError> {
     }
 
     Ok(args)
-}
-
-/// https://www.reddit.com/r/rust/comments/11co87m/comment/ja4sy88
-fn bytes_to_string(bytes: Vec<u8>) -> Option<String> {
-    if let Ok(v) = String::from_utf8(bytes.clone()) {
-        return Some(v);
-    }
-
-    let u16_bytes: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|a| u16::from_ne_bytes([a[0], a[1]]))
-        .collect();
-
-    String::from_utf16(&u16_bytes).ok()
 }
 
 impl DiPTouchup {
