@@ -2,7 +2,7 @@ use crate::util::hash::hash_fnv1a;
 use gethostname::gethostname;
 use hex::ToHex;
 use regex::Regex;
-use ring::digest::SHA1_FOR_LEGACY_USE_ONLY;
+use sha1::{Digest, Sha1};
 use std::arch::x86_64::CpuidResult;
 use thiserror::Error;
 
@@ -459,11 +459,12 @@ impl HardwareInfo {
             final_data.push(';');
         }
         log::debug!("Hardware hash string \"{}\"", final_data);
-        let digest = ring::digest::digest(&SHA1_FOR_LEGACY_USE_ONLY, final_data.as_bytes());
+        let mut hasher = Sha1::new();
+        hasher.update(final_data.as_bytes());
+        let digest = hasher.finalize();
         if self.version < 4 {
             // they fucked up the format and used :x instead of :02x
             digest
-                .as_ref()
                 .iter()
                 .map(|byte| format!("{:x}", byte))
                 .collect::<Vec<String>>()
@@ -477,7 +478,7 @@ impl HardwareInfo {
 #[cfg(unix)]
 fn get_root_creation_str() -> String {
     use crate::unix::wine::wine_prefix_dir;
-    use chrono::{TimeZone, Utc};
+    use chrono::{DateTime, TimeZone};
     use std::{fs, os::unix::fs::MetadataExt};
 
     let date_str = String::from("1970010100:00:00.000000000+0000");
@@ -490,7 +491,8 @@ fn get_root_creation_str() -> String {
         Ok(metadata) => {
             let nsec = (metadata.mtime_nsec() / 1_000_000) * 1_000_000;
             // Convert Unix timestamp to a DateTime
-            let datetime = Utc.timestamp_nanos((metadata.mtime() * 1_000_000_000) + nsec);
+            let datetime =
+                DateTime::from_timestamp_nanos((metadata.mtime() * 1_000_000_000) + nsec);
             // Format the DateTime
             return datetime.format("%Y%m%d%H%M%S%.6f+000").to_string();
         }

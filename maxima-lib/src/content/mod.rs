@@ -47,7 +47,7 @@ impl ContentService {
         let builds: Vec<ServiceAvailableBuild> = self
             .service_layer
             .request(
-                SERVICE_REQUEST_AVAILABLEBUILDS,
+                &SERVICE_REQUEST_AVAILABLEBUILDS,
                 ServiceAvailableBuildsRequestBuilder::default()
                     .offer_id(offer_id.to_owned())
                     .build()?,
@@ -74,7 +74,7 @@ impl ContentService {
         let url: ServiceDownloadUrlMetadata = self
             .service_layer
             .request(
-                SERVICE_REQUEST_DOWNLOADURL,
+                &SERVICE_REQUEST_DOWNLOADURL,
                 ServiceDownloadUrlRequestBuilder::default()
                     .offer_id(offer_id.to_owned())
                     .build_id(build_id.unwrap_or_default().to_owned())

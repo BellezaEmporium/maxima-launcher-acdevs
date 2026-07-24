@@ -25,29 +25,15 @@ use maxima::{
         ContentService,
         downloader::ZipDownloader,
         manager::{QueuedGame, QueuedGameBuilder},
-    },
-    core::{
-        LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder,
-        auth::{
-            TokenResponse,
-            context::AuthContext,
-            login::{begin_oauth_login_flow, manual_login},
-            nucleus_auth_exchange, nucleus_token_exchange,
-        },
-        clients::JUNO_PC_CLIENT_ID,
-        cloudsync::CloudSyncLockMode,
-        launch::{self, LaunchMode, LaunchOptions},
-        library::OwnedTitle,
-        manifest::{self, MANIFEST_RELATIVE_PATH},
-        service_layer::{
+    }, core::{
+        LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder, auth::{
+            TokenResponse, context::AuthContext, login::{begin_oauth_login_flow, manual_login}, nucleus_auth_exchange, nucleus_token_exchange,
+        }, clients::JUNO_PC_CLIENT_ID, cloudsync::CloudSyncLockMode, launch::{self, LaunchMode, LaunchOptions}, library::OwnedTitle, manifest::{self, MANIFEST_RELATIVE_PATH}, service_layer::{
             SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
             ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder,
             ServiceLegacyOffer, ServicePlayer,
         },
-    },
-    ooa,
-    rtm::client::BasicPresence,
-    util::{log::init_logger, native::take_foreground_focus, registry::check_registry_validity},
+    }, ooa, rtm::client::BasicPresence, util::{log::init_logger, native::take_foreground_focus, registry::check_registry_validity},
 };
 
 static MANUAL_LOGIN_PATTERN: LazyLock<Regex> =
@@ -500,7 +486,7 @@ async fn download_specific_file(
 
     debug!("URL: {}", url.url());
 
-    let downloader = ZipDownloader::new("test-game", &url.url(), "C:/DownloadTest").await?;
+    let downloader = ZipDownloader::new("test-game", &url.url(), std::path::Path::new("C:/DownloadTest")).await?;
     let num_of_entries = downloader.manifest().entries().len();
     info!("Entries: {}", num_of_entries);
 
@@ -656,7 +642,7 @@ async fn get_user_by_id(maxima_arc: LockedMaxima, user_id: &str) -> Result<()> {
     let player: ServicePlayer = maxima
         .service_layer()
         .request(
-            SERVICE_REQUEST_GETBASICPLAYER,
+            &SERVICE_REQUEST_GETBASICPLAYER,
             ServiceGetBasicPlayerRequestBuilder::default()
                 .pd(user_id.to_string())
                 .build()?,
@@ -727,7 +713,7 @@ async fn get_legacy_catalog_def(maxima_arc: LockedMaxima, offer_id: &str) -> Res
     let defs: Vec<ServiceLegacyOffer> = maxima
         .service_layer()
         .request(
-            SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
+            &SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
             ServiceGetLegacyCatalogDefsRequestBuilder::default()
                 .offer_ids(vec![offer_id.to_owned()])
                 .locale(maxima.locale().clone())

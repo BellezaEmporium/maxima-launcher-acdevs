@@ -18,17 +18,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     content::{
-        ContentService,
-        downloader::{DownloadError, ZipDownloader},
-        zip::{CompressionType, ZipError, ZipFileEntry},
-    },
-    core::{
+        ContentService, downloader::{DownloadError, ZipDownloader}, zip::{CompressionType, ZipError, ZipFileEntry},
+    }, core::{
         MaximaEvent,
         auth::storage::LockedAuthStorage,
         manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
         service_layer::ServiceLayerError,
-    },
-    util::native::{NativeError, maxima_dir},
+    }, util::native::{NativeError, maxima_dir},
 };
 
 const QUEUE_FILE: &str = "download_queue.json";
@@ -136,6 +132,8 @@ pub struct GameDownloader {
     total_bytes: usize,
     notify: Arc<Notify>,
     error: Arc<std::sync::Mutex<Option<DownloaderError>>>,
+    finished: Arc<std::sync::atomic::AtomicBool>,
+    paused: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl GameDownloader {
@@ -174,6 +172,8 @@ impl GameDownloader {
             total_bytes,
             notify: Arc::new(Notify::new()),
             error: Arc::new(std::sync::Mutex::new(None)),
+            paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            finished: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -181,20 +181,26 @@ impl GameDownloader {
         let (downloader_arc, entries, cancel_token, completed_bytes, notify, error) =
             self.prepare_download_vars();
         let total_count = self.total_count;
+        let finished = self.finished.clone();
+
         tokio::spawn(async move {
-            let dl = GameDownloader::start_downloads(
+            let result = GameDownloader::start_downloads(
                 total_count,
                 downloader_arc,
                 entries,
                 cancel_token,
                 completed_bytes,
-                notify,
+                finished.clone(),
             )
             .await;
-            if let Err(err) = dl {
-                error!("Error when downloading!: `{:?}", err);
+
+            if let Err(err) = result {
+                error!("Error when downloading!: `{:?}`", err);
                 *error.lock().unwrap() = Some(err);
             }
+
+            finished.fetch_or(true, Ordering::SeqCst);
+            notify.notify_one();
         });
     }
 
@@ -224,7 +230,7 @@ impl GameDownloader {
         entries: Vec<ZipFileEntry>,
         cancel_token: CancellationToken,
         completed_bytes: Arc<AtomicUsize>,
-        notify: Arc<Notify>,
+        finished: Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<(), DownloaderError> {
         let mut handles = Vec::with_capacity(total_count);
 
@@ -235,7 +241,7 @@ impl GameDownloader {
             let completed_bytes = completed_bytes.clone();
             handles.push(async move {
                 tokio::select! {
-                    result = downloader.download_single_file(&ele, Some(Box::new(move |bytes| {
+                    result = downloader.download_single_file(&ele, Some(Arc::new(move |bytes| {
                         completed_bytes.fetch_add(bytes, Ordering::SeqCst);
                     }))) => result.map(|_| ()).map_err(DownloaderError::from),
                     _ = cancel_token.cancelled() => {
@@ -261,7 +267,7 @@ impl GameDownloader {
         manifest.run_touchup(path).await?;
         info!("Installation finished!");
 
-        notify.notify_one();
+        let _ = finished;
         Ok(())
     }
 
@@ -275,7 +281,7 @@ impl GameDownloader {
     }
 
     pub fn is_done(&self) -> bool {
-        self.completed_bytes.load(Ordering::SeqCst) == self.total_bytes
+        self.completed_bytes.load(Ordering::SeqCst) >= self.total_bytes
     }
 
     pub fn percentage_done(&self) -> f64 {
@@ -297,6 +303,10 @@ impl GameDownloader {
 
     pub fn take_error(&self) -> Option<DownloaderError> {
         self.error.lock().unwrap().take()
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.finished.load(Ordering::SeqCst)
     }
 }
 
@@ -373,7 +383,12 @@ impl ContentManager {
             }
         }
 
-        if let Some(pos) = self.queue.queued.iter().position(|g| g.offer_id == offer_id) {
+        if let Some(pos) = self
+            .queue
+            .queued
+            .iter()
+            .position(|g| g.offer_id == offer_id)
+        {
             self.queue.queued.remove(pos);
             self.queue.save().await?;
             return Ok(());
@@ -387,6 +402,7 @@ impl ContentManager {
             if current.offer_id() == offer_id {
                 current.cancel();
                 self.current = None;
+
                 let game = self
                     .queue
                     .current
@@ -394,12 +410,6 @@ impl ContentManager {
                     .ok_or_else(|| ContentManagerError::NotInQueue(offer_id.to_owned()))?;
 
                 self.queue.queued.insert(0, game);
-
-                if let Some(game) = self.queue.queued.first().cloned() {
-                    self.queue.queued.remove(0);
-                    self.install_now(game).await?;
-                }
-
                 self.queue.save().await?;
                 return Ok(());
             }
@@ -426,34 +436,32 @@ impl ContentManager {
 
     pub(crate) async fn update(&mut self) -> Result<Option<MaximaEvent>, ContentManagerError> {
         if self.current.is_none() && self.queue.current.is_none() && !self.queue.queued.is_empty() {
-            if let Some(game) = self.queue.queued.pop() {
-                self.install_direct(game).await?;
-            }
+            let game = self.queue.queued.remove(0);
+            self.install_direct(game).await?;
         }
+
         let mut event = None;
 
         if let Some(current) = &self.current {
-            if let Some(current) = &self.current {
-                if let Some(err) = current.take_error() {
-                    let offer_id = current.offer_id().to_owned();
-                    self.current = None;
-                    self.queue.current = None;
-                    if let Some(game) = self.queue.queued.first().cloned() {
-                        self.queue.queued.remove(0);
-                        self.install_now(game).await?;
-                    }
-                    self.queue.save().await?;
-                    event = Some(MaximaEvent::InstallFailed(offer_id, err.to_string()));
-                } else if current.is_done() {
-                    event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
-                    self.current = None;
-                    self.queue.current = None;
-                    if let Some(game) = self.queue.queued.first().cloned() {
-                        self.queue.queued.remove(0);
-                        self.install_now(game).await?;
-                    }
-                    self.queue.save().await?;
+            if let Some(err) = current.take_error() {
+                let offer_id = current.offer_id().to_owned();
+                self.current = None;
+                self.queue.current = None;
+                if !self.queue.queued.is_empty() {
+                    let game = self.queue.queued.remove(0);
+                    self.install_now(game).await?;
                 }
+                self.queue.save().await?;
+                event = Some(MaximaEvent::InstallFailed(offer_id, err.to_string()));
+            } else if current.is_finished() {
+                event = Some(MaximaEvent::InstallFinished(current.offer_id().to_owned()));
+                self.current = None;
+                self.queue.current = None;
+                if !self.queue.queued.is_empty() {
+                    let game = self.queue.queued.remove(0);
+                    self.install_now(game).await?;
+                }
+                self.queue.save().await?;
             }
         }
 

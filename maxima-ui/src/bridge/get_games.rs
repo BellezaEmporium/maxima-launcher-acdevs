@@ -112,7 +112,7 @@ async fn handle_images(
     } else {
         Some(
             service_layer.request(
-                SERVICE_REQUEST_GAMEIMAGES,
+                &SERVICE_REQUEST_GAMEIMAGES,
                 ServiceGameImagesRequestBuilder::default()
                     .should_fetch_context_image(!has_logo)
                     .should_fetch_backdrop_images(!has_hero)
@@ -127,7 +127,7 @@ async fn handle_images(
     } else {
         Some(
             service_layer.request(
-                SERVICE_REQUEST_GETHEROBACKGROUNDIMAGE,
+                &SERVICE_REQUEST_GETHEROBACKGROUNDIMAGE,
                 ServiceHeroBackgroundImageRequestBuilder::default()
                     .game_slug(slug.clone())
                     .locale(locale.clone())

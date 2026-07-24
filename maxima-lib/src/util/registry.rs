@@ -6,9 +6,10 @@ use widestring::U16CString;
 
 #[cfg(windows)]
 use windows_sys::Win32::{
-    Foundation::{ERROR_CANCELLED, GetLastError},
+    Foundation::{ERROR_CANCELLED, CloseHandle, GetLastError},
     System::Registry::{HKEY, KEY_QUERY_VALUE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW},
     UI::Shell::{SEE_MASK_NO_CONSOLE, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
+    System::Threading::{WaitForSingleObject, INFINITE}
 };
 
 #[cfg(windows)]
@@ -93,72 +94,108 @@ pub fn check_registry_validity() -> Result<(), RegistryError> {
 }
 
 #[cfg(windows)]
+unsafe fn open_and_query_reg(
+    sub_key: &str,
+    value_name: &str,
+) -> Result<Option<String>, RegistryError> {
+    let hkey = HKEY_LOCAL_MACHINE as HKEY;
+    let mut handle = ptr::null_mut();
+
+    if unsafe {
+        RegOpenKeyExW(
+            hkey,
+            U16CString::from_str(sub_key)?.as_ptr(),
+            0,
+            KEY_QUERY_VALUE,
+            &mut handle,
+        )
+    } != 0
+    {
+        return Err(RegistryError::Key(sub_key.to_string()));
+    }
+
+    let dw_type = ptr::null_mut();
+    let mut dw_size = 0;
+
+    if unsafe {
+        RegQueryValueExW(
+            handle,
+            U16CString::from_str(value_name)?.as_ptr(),
+            ptr::null_mut(),
+            dw_type,
+            ptr::null_mut(),
+            &mut dw_size,
+        )
+    } != 0
+    {
+        unsafe { RegCloseKey(handle) };
+        return Err(RegistryError::Value {
+            value: value_name.to_string(),
+            key: sub_key.to_string(),
+        });
+    }
+
+    if dw_size == 0 {
+        unsafe { RegCloseKey(handle) };
+        return Err(RegistryError::Value {
+            value: value_name.to_string(),
+            key: sub_key.to_string(),
+        });
+    }
+
+    let mut buf: Vec<u16> = vec![0; dw_size as usize / 2];
+    if unsafe {
+        RegQueryValueExW(
+            handle,
+            U16CString::from_str(value_name)?.as_ptr(),
+            ptr::null_mut(),
+            dw_type,
+            buf.as_mut_ptr() as *mut u8,
+            &mut dw_size,
+        )
+    } != 0
+    {
+        unsafe { RegCloseKey(handle) };
+        return Err(RegistryError::Value {
+            value: value_name.to_string(),
+            key: sub_key.to_string(),
+        });
+    }
+
+    unsafe { RegCloseKey(handle) };
+    Ok(Some(String::from_utf16_lossy(&buf[..buf.len() - 1])))
+}
+
+#[cfg(windows)]
+fn inject_wow6432node(sub_key: &str) -> Option<String> {
+    // Only rewrite paths under SOFTWARE\ that aren't already redirected
+    let prefix = "SOFTWARE\\";
+    if let Some(rest) = sub_key.strip_prefix(prefix) {
+        if !rest.starts_with("WOW6432Node\\") {
+            return Some(format!("SOFTWARE\\WOW6432Node\\{}", rest));
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
 async fn read_reg_key(path: &str) -> Result<Option<String>, RegistryError> {
     if let (Some(hkey_segment), Some(value_segment)) = (path.find('\\'), path.rfind('\\')) {
         let sub_key = &path[(hkey_segment + 1)..value_segment];
         let value_name = &path[(value_segment + 1)..];
 
-        let hkey = HKEY_LOCAL_MACHINE as HKEY;
-        let mut handle = ptr::null_mut();
+        // First attempt: path as-is
+        let result = unsafe { open_and_query_reg(sub_key, value_name) };
 
-        unsafe {
-            if RegOpenKeyExW(
-                hkey,
-                U16CString::from_str(sub_key)?.as_ptr(),
-                0,
-                KEY_QUERY_VALUE,
-                &mut handle,
-            ) != 0
-            {
+        match result {
+            Ok(v) => return Ok(v),
+            Err(_) => {
+                // Second attempt: inject WOW6432Node if applicable
+                if let Some(wow_sub_key) = inject_wow6432node(sub_key) {
+                    return unsafe { open_and_query_reg(&wow_sub_key, value_name) };
+                }
                 return Err(RegistryError::Key(sub_key.to_string()));
             }
-
-            let dw_type = ptr::null_mut();
-            let mut dw_size = 0;
-
-            if RegQueryValueExW(
-                handle,
-                U16CString::from_str(value_name)?.as_ptr(),
-                ptr::null_mut(),
-                dw_type,
-                ptr::null_mut(),
-                &mut dw_size,
-            ) != 0
-            {
-                RegCloseKey(handle);
-                return Err(RegistryError::Value {
-                    value: value_name.to_string(),
-                    key: sub_key.to_string(),
-                });
-            }
-
-            if dw_size == 0 {
-                RegCloseKey(handle);
-                return Err(RegistryError::Value {
-                    value: value_name.to_string(),
-                    key: sub_key.to_string(),
-                });
-            }
-
-            let mut buf: Vec<u16> = vec![0; dw_size as usize / 2];
-            if RegQueryValueExW(
-                handle,
-                U16CString::from_str(value_name)?.as_ptr(),
-                ptr::null_mut(),
-                dw_type,
-                buf.as_mut_ptr() as *mut u8,
-                &mut dw_size,
-            ) != 0
-            {
-                RegCloseKey(handle);
-                return Err(RegistryError::Value {
-                    value: value_name.to_string(),
-                    key: sub_key.to_string(),
-                });
-            }
-
-            RegCloseKey(handle);
-            return Ok(Some(String::from_utf16_lossy(&buf[..buf.len() - 1])));
         }
     }
 
@@ -264,11 +301,16 @@ pub fn launch_bootstrap() -> Result<(), NativeError> {
     };
 
     unsafe {
-        ShellExecuteExW(&mut shell_execute_info);
-
+        let ok = ShellExecuteExW(&mut shell_execute_info);
         let err = GetLastError();
-        if err == ERROR_CANCELLED {
+
+        if ok == 0 || err == ERROR_CANCELLED {
             return Err(NativeError::Elevation(file1));
+        }
+
+        if !shell_execute_info.hProcess.is_null() {
+            WaitForSingleObject(shell_execute_info.hProcess, INFINITE);
+            CloseHandle(shell_execute_info.hProcess);
         }
     }
 

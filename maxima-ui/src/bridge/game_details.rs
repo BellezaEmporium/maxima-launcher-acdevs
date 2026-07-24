@@ -23,7 +23,7 @@ pub async fn game_details_request(
     let maxima = maxima_arc.lock().await;
 
     let rq = maxima.service_layer().request(
-        SERVICE_REQUEST_GAMESYSTEMREQUIREMENTS,
+        &SERVICE_REQUEST_GAMESYSTEMREQUIREMENTS,
         ServiceGameSystemRequirementsRequestBuilder::default()
             .slug(slug.clone())
             .locale(maxima.locale().short_str().to_owned())

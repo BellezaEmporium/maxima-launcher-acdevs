@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use widestring::U16CString;
 use windows_sys::Win32::{
-    Foundation::ERROR_INSUFFICIENT_BUFFER,
+    Foundation::{LocalFree, ERROR_INSUFFICIENT_BUFFER},
     Security::{
         Authorization::{
             ConvertSecurityDescriptorToStringSecurityDescriptorW,
@@ -13,8 +13,8 @@ use windows_sys::Win32::{
         DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
     },
     System::Services::{
-        OpenSCManagerA, OpenServiceA, QueryServiceObjectSecurity, SetServiceObjectSecurity,
-        SC_MANAGER_ALL_ACCESS, SERVICE_ALL_ACCESS,
+        CloseServiceHandle, OpenSCManagerA, OpenServiceA, QueryServiceObjectSecurity,
+        SetServiceObjectSecurity, SC_MANAGER_CONNECT, SERVICE_ALL_ACCESS,
     },
 };
 use windows_service::service::{
@@ -50,10 +50,7 @@ pub fn register_service() -> Result<(), BackgroundServiceControlError> {
     // Update the existing service, if it exists
     let existing_service = service_manager.open_service(
         OsString::from(SERVICE_NAME),
-        ServiceAccess::START
-            | ServiceAccess::STOP
-            | ServiceAccess::CHANGE_CONFIG
-            | ServiceAccess::QUERY_STATUS,
+        ServiceAccess::START | ServiceAccess::STOP | ServiceAccess::CHANGE_CONFIG | ServiceAccess::QUERY_STATUS,
     );
 
     if let Ok(service) = existing_service {
@@ -61,100 +58,107 @@ pub fn register_service() -> Result<(), BackgroundServiceControlError> {
 
         let state = service.query_status()?.current_state;
         if state == ServiceState::Running {
-            let result = service.stop();
-            if result.is_err() {
-                // Noop
-            }
+            let _ = service.stop();
         }
 
         service.change_config(&service_info)?;
+        unsafe { init_service_security()?; }
         service.start(&[OsStr::new("")])?;
         return Ok(());
     }
 
     let service = service_manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG)?;
     service.set_description(SERVICE_DISPLAY_NAME)?;
-
-    // Allow the service to be started without administrative rights
     unsafe { init_service_security()? };
 
     Ok(())
 }
 
 pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlError> {
-    let hscm = unsafe { OpenSCManagerA(
-        std::ptr::null(),
-        CString::new("ServicesActive")?.as_ptr() as *const u8,
-        SC_MANAGER_ALL_ACCESS,
-    ) };
+    let hscm = unsafe {
+        OpenSCManagerA(
+            std::ptr::null(),
+            CString::new("ServicesActive")?.as_ptr() as *const u8,
+            SC_MANAGER_CONNECT,
+        )
+    };
+    if hscm.is_null() {
+        return Err(BackgroundServiceControlError::ServiceObjectSecurity(
+            std::io::Error::last_os_error(),
+        ));
+    }
+    let _close_scm = scopeguard::guard(hscm, |h| unsafe { CloseServiceHandle(h); });
 
-    let hservice = unsafe { OpenServiceA(
-        hscm,
-        CString::new(SERVICE_NAME)?.as_ptr() as *const u8,
-        SERVICE_ALL_ACCESS,
-    ) };
-
+    let hservice = unsafe {
+        OpenServiceA(
+            hscm,
+            CString::new(SERVICE_NAME)?.as_ptr() as *const u8,
+            SERVICE_ALL_ACCESS,
+        )
+    };
     if hservice.is_null() {
         return Err(BackgroundServiceControlError::Absent);
     }
+    let _close_service = scopeguard::guard(hservice, |h| unsafe { CloseServiceHandle(h); });
 
-    // Query the service object security
+    // Query the service object security (first call to get required buffer size).
     let mut bytes_required: u32 = 0;
-    let result = unsafe { QueryServiceObjectSecurity(
-        hservice,
-        DACL_SECURITY_INFORMATION,
-        std::ptr::null_mut(),
-        0,
-        &mut bytes_required,
-    ) };
-
+    let result = unsafe {
+        QueryServiceObjectSecurity(
+            hservice,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            0,
+            &mut bytes_required,
+        )
+    };
     if result == 0 {
-        // The initial call failed; check if the error was related to buffer size
         let last_error = std::io::Error::last_os_error();
-        let raw_error = (&last_error).raw_os_error().unwrap() as u32;
+        let raw_error = last_error.raw_os_error().unwrap_or(0) as u32;
         if raw_error != ERROR_INSUFFICIENT_BUFFER {
             return Err(BackgroundServiceControlError::ServiceObjectSecurity(last_error));
         }
     }
 
-    // Allocate a buffer for the security descriptor
     let mut security_descriptor_buffer: Vec<u8> = vec![0; bytes_required as usize];
     let security_descriptor = security_descriptor_buffer.as_mut_ptr() as PSECURITY_DESCRIPTOR;
 
-    // Query the service object security again with the correct buffer
-    let result = unsafe { QueryServiceObjectSecurity(
-        hservice,
-        DACL_SECURITY_INFORMATION,
-        security_descriptor,
-        bytes_required,
-        &mut bytes_required,
-    ) };
-
+    let result = unsafe {
+        QueryServiceObjectSecurity(
+            hservice,
+            DACL_SECURITY_INFORMATION,
+            security_descriptor,
+            bytes_required,
+            &mut bytes_required,
+        )
+    };
     if result == 0 {
         return Err(BackgroundServiceControlError::ServiceObjectSecurity(
             std::io::Error::last_os_error(),
         ));
     }
 
-    // Convert the security descriptor to a string
+    // Convert the security descriptor to an SDDL string.
     let mut sddl_string: *mut u16 = std::ptr::null_mut();
     let mut sddl_string_len: u32 = 0;
-    let result = unsafe { ConvertSecurityDescriptorToStringSecurityDescriptorW(
-        security_descriptor,
-        SDDL_REVISION_1.into(),
-        DACL_SECURITY_INFORMATION,
-        &mut sddl_string,
-        &mut sddl_string_len,
-    ) };
-
+    let result = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            security_descriptor,
+            SDDL_REVISION_1.into(),
+            DACL_SECURITY_INFORMATION,
+            &mut sddl_string,
+            &mut sddl_string_len,
+        )
+    };
     if result == 0 {
         return Err(BackgroundServiceControlError::SecurityDescriptorToString(
             std::io::Error::last_os_error(),
         ));
     }
+    let _free_sddl = scopeguard::guard(sddl_string, |p| unsafe { LocalFree(p as *mut _); });
 
     let sddl = unsafe { U16CString::from_ptr_str(sddl_string).to_string_lossy() };
-    let sddl_to_add = "(A;;RPWPCR;;;BU)";
+    let sddl_to_add = "(A;;CCLCRPWPLOCRRC;;;BU)";
     if sddl.contains(sddl_to_add) {
         return Ok(());
     }
@@ -164,32 +168,36 @@ pub unsafe fn init_service_security() -> Result<(), BackgroundServiceControlErro
 
     let mut amended_security_descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
     let mut amended_security_descriptor_len: u32 = 0;
-    let result = unsafe { ConvertStringSecurityDescriptorToSecurityDescriptorW(
-        U16CString::from_str(amended_sddl.as_str())?.as_ptr(),
-        SDDL_REVISION_1.into(),
-        &mut amended_security_descriptor,
-        &mut amended_security_descriptor_len,
-    ) };
-
+    let result = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            U16CString::from_str(amended_sddl.as_str())?.as_ptr(),
+            SDDL_REVISION_1.into(),
+            &mut amended_security_descriptor,
+            &mut amended_security_descriptor_len,
+        )
+    };
     if result == 0 {
         return Err(BackgroundServiceControlError::StringToSecurityDescriptor(
             std::io::Error::last_os_error(),
         ));
     }
+    let _free_sd =
+        scopeguard::guard(amended_security_descriptor, |p| unsafe { LocalFree(p as *mut _); });
 
-    // Set the service object security with the amended security descriptor
-    let result = unsafe { SetServiceObjectSecurity(
-        hservice,
-        DACL_SECURITY_INFORMATION,
-        amended_security_descriptor,
-    ) };
-
+    let result = unsafe {
+        SetServiceObjectSecurity(
+            hservice,
+            DACL_SECURITY_INFORMATION,
+            amended_security_descriptor,
+        )
+    };
     if result == 0 {
         return Err(BackgroundServiceControlError::SecurityAttributes(
             std::io::Error::last_os_error(),
         ));
     }
 
+    info!("Reapplied service DACL for {}", SERVICE_NAME);
     Ok(())
 }
 

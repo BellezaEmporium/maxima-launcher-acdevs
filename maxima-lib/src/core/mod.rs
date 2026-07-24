@@ -264,7 +264,7 @@ impl Maxima {
         let user: ServiceUser = self
             .service_layer
             .request(
-                SERVICE_REQUEST_GETUSERPLAYER,
+                &SERVICE_REQUEST_GETUSERPLAYER,
                 ServiceGetUserPlayerRequest {},
             )
             .await?;
@@ -283,7 +283,7 @@ impl Maxima {
         let friends: ServiceFriends = self
             .service_layer
             .request(
-                SERVICE_REQUEST_GETMYFRIENDS,
+                &SERVICE_REQUEST_GETMYFRIENDS,
                 ServiceGetMyFriendsRequestBuilder::default()
                     .limit(100)
                     .offset(offset)
@@ -329,7 +329,7 @@ impl Maxima {
         let data: ServicePlayer = self
             .service_layer
             .request(
-                SERVICE_REQUEST_GETBASICPLAYER,
+                &SERVICE_REQUEST_GETBASICPLAYER,
                 ServiceGetBasicPlayerRequestBuilder::default()
                     .pd(id.to_string())
                     .build()
@@ -363,7 +363,9 @@ impl Maxima {
             return Ok(());
         }
 
-        let response = reqwest::get(image.path()).await?;
+        // Reuse the ServiceLayerClient's client so avatar downloads share its
+        // connection pool instead of spinning up an ungated one.
+        let response = self.service_layer.client().get(image.path()).send().await?;
         let body: Vec<u8> = response.bytes().await?.to_vec();
 
         let mut file = File::create(path)?;
@@ -422,10 +424,12 @@ impl Maxima {
         &mut self.rtm
     }
 
+    /// Sets the port the LSX server listens on.
     pub fn set_lsx_port(&mut self, port: u16) {
         self.lsx_port = port;
     }
 
+    /// Tracks how many LSX clients are currently connected.
     pub(super) fn set_lsx_connections(&mut self, connections: u16) {
         self.lsx_connections = connections;
     }

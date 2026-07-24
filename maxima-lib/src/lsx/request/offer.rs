@@ -27,7 +27,7 @@ pub async fn handle_query_offers_request(
     let offers: ServiceAddonSearchResultRoot = maxima
         .service_layer()
         .request(
-            SERVICE_REQUEST_ADDONSEARCH,
+            &SERVICE_REQUEST_ADDONSEARCH,
             ServiceAddonSearchRequestBuilder::default()
                 .platform(String::new())
                 .category_id(category)

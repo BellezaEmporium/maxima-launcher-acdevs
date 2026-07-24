@@ -16,6 +16,8 @@ pub enum ServerError {
 
     #[error("attempted to inject into invalid process")]
     InvalidInjectionTarget,
+    #[error("timed out waiting for the HTTP server to bind")]
+    BindTimeout,
 }
 
 impl error::ResponseError for ServerError {

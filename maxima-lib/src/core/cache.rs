@@ -2,7 +2,14 @@ use std::{any::Any, borrow::Borrow, hash::Hash, sync::Arc, time::Duration};
 
 use moka::sync::Cache;
 
-/// Note that values are cloned when retrieved
+/// A cache keyed by `K` whose values are type-erased via `dyn Any`.
+///
+/// Note that values are cloned when retrieved. Because the value type isn't
+/// part of `K`, nothing prevents two call sites from using the same key with
+/// different `T`s; `get` guards against this by returning `None` on a type
+/// mismatch rather than panicking, but such mismatches still won't be caught
+/// at compile time. Callers should keep cache keys unambiguous (e.g. by
+/// namespacing them per value type).
 pub struct DynamicCache<K> {
     cache: Cache<K, Arc<dyn Any + Sync + Send>>,
 }
@@ -33,6 +40,6 @@ impl<K: Eq + Hash + Sync + Send + 'static> DynamicCache<K> {
     {
         self.cache
             .get(key)
-            .map(|cached| (*cached.downcast::<T>().unwrap()).clone())
+            .and_then(|cached| cached.downcast_ref::<T>().cloned())
     }
 }

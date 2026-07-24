@@ -15,6 +15,7 @@ use derive_getters::Getters;
 use reqwest::{Client, Url, redirect};
 use serde::Deserialize;
 use thiserror::Error;
+use url::form_urlencoded::{Serializer, parse};
 
 pub async fn nucleus_auth_exchange<'a>(
     auth_context: &AuthContext<'a>,
@@ -61,18 +62,20 @@ pub async fn nucleus_auth_exchange<'a>(
         url.query()
     };
 
-    let query = querystring::querify(query.ok_or(AuthError::Query)?);
+    let query = query.ok_or(AuthError::Query)?;
+    let normalized_query = Serializer::new(String::new())
+        .extend_pairs(parse(query.as_bytes()))
+        .finish();
 
     if response_type == "token" {
         response_type = "access_token";
     }
 
-    let token = query
-        .iter()
-        .find(|(x, _)| *x == response_type)
-        .ok_or(AuthError::Query)?
-        .1;
-    Ok(token.to_owned())
+    let token = parse(normalized_query.as_bytes())
+        .find(|(key, _)| key == response_type)
+        .map(|(_, value)| value.into_owned())
+        .ok_or(AuthError::Query)?;
+    Ok(token)
 }
 
 #[derive(Error, Debug)]

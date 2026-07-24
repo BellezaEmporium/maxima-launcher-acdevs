@@ -2,6 +2,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener;
+use url::form_urlencoded;
 
 use crate::core::{auth::storage::AuthError, clients::JUNO_PC_CLIENT_ID};
 
@@ -35,12 +36,20 @@ pub async fn begin_oauth_login_flow<'a>(context: &mut AuthContext<'a>) -> Result
             let query = path_and_query
                 .split_once("?")
                 .map(|(_, qs)| qs.trim())
-                .map(querystring::querify)
+                .map(|qs| {
+                    let normalized = form_urlencoded::Serializer::new(String::new())
+                        .extend_pairs(form_urlencoded::parse(qs.as_bytes()))
+                        .finish();
+
+                    form_urlencoded::parse(normalized.as_bytes())
+                        .into_owned()
+                        .collect::<Vec<(String, String)>>()
+                })
                 .ok_or(AuthError::Query)?;
 
-            for query in query {
-                if query.0 == "code" {
-                    context.set_code(query.1);
+            for (key, value) in query {
+                if key == "code" {
+                    context.set_code(value.as_str());
                     return Ok(());
                 }
             }

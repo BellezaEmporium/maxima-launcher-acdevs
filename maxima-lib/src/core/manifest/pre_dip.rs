@@ -63,10 +63,20 @@ macro_rules! predip_type {
 predip_type!(
     FeatureFlags;
     attr {
+        // Attribute names on <featureFlags> vary across installerdata.xml
+        // schema versions (e.g. `treatUpdatesAsMandatory` vs
+        // `treatUpdatesAsMandatoryEnabled`, `enableDifferentialUpdate` vs
+        // `UnableDifferentialUpdate`), so default each to an empty string
+        // when absent rather than failing to deserialize.
+        #[serde(default)]
         forceTouchupInstallerAfterUpdate: String,
+        #[serde(default)]
         autoUpdateEnabled: String,
+        #[serde(default)]
         treatUpdatesAsMandatoryEnabled: String,
+        #[serde(default)]
         useGameVersionFromManifestEnabled: String,
+        #[serde(default)]
         UnableDifferentialUpdate: String,
     },
     data {}
@@ -86,7 +96,10 @@ predip_type!(
     data {
         filePath: String,
         parameters: String,
+        // Not every installerdata.xml specifies update/repair parameters.
+        #[serde(default)]
         updateParameters: String,
+        #[serde(default)]
         repairParameters: String,
     }
 );
@@ -98,7 +111,11 @@ predip_type!(
     },
     data {
         title: String,
-        eula: String,
+        // Some installerdata.xml files contain multiple <eula> entries
+        // within a single <localeInfo> block, which a plain `String` field
+        // can't deserialize.
+        #[serde(default)]
+        eula: Vec<String>,
         #[serde(default)]
         exclude: Vec<String>,
     }
@@ -108,6 +125,9 @@ predip_type!(
     Metadata;
     attr {},
     data {
+        // Not every installerdata.xml includes a <featureFlags> element;
+        // fall back to defaults (all-empty strings) when it's absent.
+        #[serde(default)]
         featureFlags: PreDiPFeatureFlags,
         os: PreDiPOs,
         #[serde(default)]
@@ -126,7 +146,9 @@ predip_type!(
     data {
         #[serde(rename = "contentIDs")]
         contentIds: PreDiPContentIDs,
-        uninstall: PreDiPUninstall,
+        // Not every installerdata.xml includes an <uninstall> element.
+        #[serde(default)]
+        uninstall: Option<PreDiPUninstall>,
         metadata: PreDiPMetadata,
         executable: PreDiPExecutable,
         installManifest: PreDiPInstallManifest,

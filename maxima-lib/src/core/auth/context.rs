@@ -8,7 +8,7 @@ use crate::core::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::random;
 use ring::hmac::HMAC_SHA256;
-use sha2_const::Sha256;
+use sha2::{Digest, Sha256};
 
 /// Context with utilities for auth flow
 pub struct AuthContext<'a> {
@@ -46,8 +46,10 @@ impl AuthContext<'_> {
     }
 
     fn generate_challenge(code_verifier: &String) -> String {
-        let hash = Sha256::new().update(code_verifier.as_bytes()).finalize();
-        URL_SAFE_NO_PAD.encode(hash)
+        let mut hash = Sha256::new();
+        hash.update(code_verifier.as_bytes());
+        let result = hash.finalize();
+        URL_SAFE_NO_PAD.encode(result)
     }
 
     pub fn generate_pc_sign(&self) -> Result<String, HardwareHashError> {

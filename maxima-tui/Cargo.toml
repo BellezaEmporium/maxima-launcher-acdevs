@@ -1,8 +1,8 @@
 [package]
 name = "maxima-tui"
-version = "0.1.0"
-authors = ["Sean Kahler <sean@battleda.sh>"]
-edition = "2024"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 maxima-lib = { path = "../maxima-lib" }

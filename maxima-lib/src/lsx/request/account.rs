@@ -25,7 +25,7 @@ pub async fn handle_query_entitlements_request(
 
     let response: ServiceSdkEntitlementsResult = service_layer
         .request(
-            SERVICE_REQUEST_SDKENTITLEMENTS,
+            &SERVICE_REQUEST_SDKENTITLEMENTS,
             ServiceSdkEntitlementsRequestBuilder::default()
                 .page_number(1)
                 .page_size(100)

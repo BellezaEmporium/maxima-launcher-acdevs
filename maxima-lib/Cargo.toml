@@ -1,8 +1,8 @@
 [package]
 name = "maxima-lib"
-version = "1.0.0"
-edition = "2024"
-authors = ["Sean Kahler <sean@battleda.sh>"]
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 categories = ["games"]
 description = "A free and open-source replacement for the EA Desktop Launcher"
 keywords = ["electronic-arts", "linux-gaming"]
@@ -10,9 +10,12 @@ license = "GPL-3.0"
 readme = "README.md"
 repository = "https://github.com/ArmchairDevelopers/Maxima"
 documentation = "https://docs.rs/maxima"
-rust-version = "1.96.0"
+rust-version = { workspace = true }
 
 [dependencies]
+postcard = { version = "1.1.3", features = ["use-std"] }
+flate2 = { version = "1.1.9", features = ["zlib"] }
+scopeguard = "1.2.0"
 tokio = { workspace = true }
 moka = { version = "0.12.15", features = ["sync"] }
 serde = { workspace = true }
@@ -20,7 +23,7 @@ serde_json = { workspace = true }
 quick-xml = { version = "0.41.0", features = ["serialize"] }
 pastey = "0.2.3"
 hex = { workspace = true }
-reqwest = { workspace = true, features = ["form", "query", "gzip", "json"] }
+reqwest = { workspace = true, features = ["blocking", "form", "query", "gzip", "json"] }
 base64 = { workspace = true }
 base62 = "2.2.4"
 log = { workspace = true }
@@ -29,13 +32,12 @@ chrono = "0.4.45"
 regex = { workspace = true }
 directories = { workspace = true }
 open = "5.3.6"
-querystring = { workspace = true }
 ureq = { version = "3.3.0", features = ["_tls"] }
 sysinfo = "0.39.5"
 strum_macros = { workspace = true }
-sha2-const = "0.1.3"
+sha2 = "0.11.0"
 tar = "0.4.46"
-flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-default"] }
+miniz_oxide = { version = "0.9.1", features = ["serde"] }
 xz2 = "0.1.7"
 zstd = "0.13.3"
 toml = "1.1.2"
@@ -49,7 +51,7 @@ ring = "0.17.14"
 futures = { workspace = true }
 prost = "0.14.4"
 encoding_rs = "0.8.35"
-async-compression = { version = "=0.4.42", features = ["tokio", "deflate"] }
+async-compression = { version = "0.4.42", features = ["tokio", "deflate"] }
 tokio-util = { version = "0.7.18", features = ["io", "compat"] }
 uuid = "1.23.4"
 tokio-rustls = "0.26.4"
@@ -71,6 +73,8 @@ http = "1.4.2"
 generic-array = "1.4.3"
 rustls-pki-types = "1.15.0"
 tokio-stream = "0.1.18"
+sha1 = "0.11.0"
+libz-sys = "1.1.29"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [

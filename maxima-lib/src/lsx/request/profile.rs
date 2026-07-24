@@ -18,7 +18,7 @@ use crate::{
     },
     make_lsx_handler_response,
     rtm::client::{BasicPresence, RichPresenceBuilder},
-    util::native::{NativeError, SafeStr, platform_path},
+    util::native::{SafeStr, platform_path},
 };
 
 pub async fn handle_profile_request(
@@ -228,7 +228,7 @@ pub async fn handle_get_block_list_request(
     let friends: ServiceFriends = maxima
         .service_layer()
         .request(
-            SERVICE_REQUEST_GETMYFRIENDS,
+            &SERVICE_REQUEST_GETMYFRIENDS,
             ServiceGetMyFriendsRequestBuilder::default()
                 .limit(100)
                 .offset(0)

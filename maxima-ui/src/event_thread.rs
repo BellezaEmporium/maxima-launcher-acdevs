@@ -60,7 +60,7 @@ impl EventThread {
         let friends: ServiceFriends = maxima
             .service_layer()
             .request(
-                SERVICE_REQUEST_GETMYFRIENDS,
+                &SERVICE_REQUEST_GETMYFRIENDS,
                 ServiceGetMyFriendsRequestBuilder::default()
                     .offset(0)
                     .limit(100)

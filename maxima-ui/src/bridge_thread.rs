@@ -266,7 +266,7 @@ impl BridgeThread {
                         match request {
                             MaximaLibRequest::StartService => {
                                 register_service_user()?;
-                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                tokio::time::sleep(Duration::from_millis(200)).await;
                                 break 'wait_for_auth;
                             }
                             MaximaLibRequest::ShutdownRequest => return Ok(()),
@@ -278,12 +278,49 @@ impl BridgeThread {
                 if !is_service_running()? {
                     info!("Starting service...");
                     start_service().await?;
+
+                    let service_addr = "127.0.0.1:13021";
+                    let mut ready = false;
+                    for attempt in 0..50 {
+                        match tokio::net::TcpStream::connect(service_addr).await {
+                            Ok(_) => {
+                                ready = true;
+                                info!("Service HTTP endpoint ready after {} attempts", attempt + 1);
+                                break;
+                            }
+                            Err(e) => {
+                                if attempt % 5 == 0 {
+                                    warn!(
+                                        "Service not ready (attempt {}/50): {} — kind: {:?}",
+                                        attempt + 1,
+                                        e,
+                                        e.kind()
+                                    );
+                                }
+                                tokio::time::sleep(Duration::from_millis(300)).await;
+                            }
+                        }
+                    }
+                    if !ready {
+                        return Err(BackendError::BackgroundServiceClient(
+                            maxima::core::error::BackgroundServiceClientError::Request(
+                                "Service did not become ready after 50 attempts".to_string(),
+                            ),
+                        ));
+                    }
                 }
             }
 
             if let Err(err) = check_registry_validity() {
                 warn!("{}, fixing...", err);
-                request_registry_setup().await?;
+                if let Err(e) = request_registry_setup().await {
+                    let source_chain: Vec<String> =
+                        std::iter::successors(Some(&e as &dyn std::error::Error), |e| e.source())
+                            .map(|e| e.to_string())
+                            .collect();
+                    error!("Registry setup failed: {} (source: {:?})", e, source_chain);
+                    return Err(e.into());
+                }
             }
         }
         let maxima_arc: LockedMaxima = Maxima::new_with_options(

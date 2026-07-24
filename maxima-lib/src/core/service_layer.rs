@@ -4,9 +4,10 @@ use log::{debug, error, warn};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2_const;
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::{Mutex, Semaphore};
@@ -109,14 +110,14 @@ pub struct ServiceLayerGraphQLRequest {
 macro_rules! load_graphql_request {
     ($type:ident, $operation:expr, $key:expr) => {{
         let content = include_str!(concat!("graphql/", $operation, ".gql"));
-        let hash = sha2_const::Sha256::new()
-            .update(content.as_bytes())
-            .finalize();
+        let mut hash = Sha256::new();
+        hash.update(content.as_bytes());
+        let result = hash.finalize();
         ServiceLayerGraphQLRequest {
             query: content,
             operation: $operation,
             key: $key,
-            hash,
+            hash: result.into(),
             r#type: ServiceLayerRequestType::$type,
         }
     }};
@@ -124,7 +125,7 @@ macro_rules! load_graphql_request {
 
 macro_rules! define_graphql_request {
     ($type:ident, $operation:expr, $key:expr) => { pastey::paste! {
-        pub const [<SERVICE_REQUEST_ $operation:upper>]: &ServiceLayerGraphQLRequest = &load_graphql_request!($type, stringify!($operation), stringify!($key));
+        pub static [<SERVICE_REQUEST_ $operation:upper>]: LazyLock<ServiceLayerGraphQLRequest> = LazyLock::new(|| load_graphql_request!($type, stringify!($operation), stringify!($key)));
     }}
 }
 
@@ -163,6 +164,11 @@ impl ServiceLayerClient {
             last_request: Arc::new(Mutex::new(None)),
             min_request_interval: Duration::from_millis(100),
         }
+    }
+
+    /// Exposes the underlying `reqwest::Client`
+    pub fn client(&self) -> &Client {
+        &self.client
     }
 
     pub async fn request<T, R>(

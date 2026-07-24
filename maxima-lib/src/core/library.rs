@@ -57,22 +57,28 @@ pub struct OwnedOffer {
 
 impl OwnedOffer {
     pub async fn is_installed(&self) -> bool {
-        // I would love to throw an error here but that's just not feasible.
-        // If you can't grab the path it may as well not be installed.
         let Some(path) = &self.offer.install_check_override().as_ref() else {
+            log::warn!("[{}] No install_check_override", self.slug);
             return false;
         };
         let path = match parse_registry_path(path).await {
-            Ok(path) => path,
-            Err(_) => return false,
+            Ok(p) => p,
+            Err(_) => {
+                return false;
+            }
         };
-        // If it wasn't replaced...
         if path.starts_with("[") {
+            log::warn!("[{}] Registry key unresolved: {:?}", self.slug, path);
             return false;
         }
-        #[cfg(unix)]
-        let path = case_insensitive_path(path);
-        path.exists()
+        let exists = path.exists();
+        log::debug!(
+            "[{}] install check path {:?} exists={}",
+            self.slug,
+            path,
+            exists
+        );
+        exists
     }
 
     pub async fn install_check_path(&self) -> Result<String, ManifestError> {
@@ -387,7 +393,7 @@ impl GameLibrary {
 
             let user: ServiceUser = self
                 .service_layer
-                .request(SERVICE_REQUEST_GETPRELOADEDOWNEDGAMES, request)
+                .request(&SERVICE_REQUEST_GETPRELOADEDOWNEDGAMES, request)
                 .await?;
             user.owned_game_products()
                 .as_ref()
@@ -404,7 +410,7 @@ impl GameLibrary {
         let defs: Vec<ServiceLegacyOffer> = self
             .service_layer
             .request(
-                SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
+                &SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
                 ServiceGetLegacyCatalogDefsRequestBuilder::default()
                     .offer_ids(offer_ids)
                     .locale(locale)

@@ -14,7 +14,7 @@ use maxima::util::BackgroundServiceControlError;
 use maxima::util::native::NativeError;
 #[cfg(windows)]
 use maxima::util::service::{is_service_valid, register_service};
-use url::Url;
+use url::{Url, form_urlencoded};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -153,20 +153,30 @@ async fn run(args: &[String]) -> Result<bool, RunError> {
 
         if arg.starts_with("origin2") {
             let url = Url::parse(arg)?;
-            let query = querystring::querify(url.query().unwrap());
-            let _offer_id = query.iter().find(|(x, _)| *x == "offerIds").unwrap().1;
-            let cmd_params = query.iter().find(|(x, _)| *x == "cmdParams").unwrap().1;
+            let mut offer_id = None;
+            let mut cmd_params = None;
+
+            for (key, value) in form_urlencoded::parse(url.query().unwrap_or_default().as_bytes()) {
+                match key.as_ref() {
+                    "offerIds" => offer_id = Some(value),
+                    "cmdParams" => cmd_params = Some(value),
+                    _ => {}
+                }
+            }
+
+            let _offer_id = offer_id.unwrap();
+            let cmd_params = cmd_params.unwrap();
 
             let mut child = Command::new(current_exe()?.with_file_name("maxima-cli.exe"));
             child.env(
                 "MAXIMA_LAUNCH_ARGS",
-                urlencoding::decode(cmd_params)?
+                urlencoding::decode(cmd_params.as_ref())?
                     .into_owned()
                     .replace("\\\"", "\""),
             );
             println!(
                 "{}",
-                urlencoding::decode(cmd_params)?
+                urlencoding::decode(cmd_params.as_ref())?
                     .into_owned()
                     .replace("\\\"", "\"")
             );
@@ -178,7 +188,15 @@ async fn run(args: &[String]) -> Result<bool, RunError> {
         }
 
         if arg.starts_with("qrc") {
-            let query = arg.split("login_successful.html?").collect::<Vec<&str>>()[1];
+            let raw_query = arg
+                .split("login_successful.html?")
+                .nth(1)
+                .unwrap_or_default();
+            let mut serializer = form_urlencoded::Serializer::new(String::new());
+            for (key, value) in form_urlencoded::parse(raw_query.as_bytes()) {
+                serializer.append_pair(key.as_ref(), value.as_ref());
+            }
+            let query = serializer.finish();
             reqwest::get(format!("http://127.0.0.1:31033/auth?{}", query)).await?;
 
             return Ok(true);
