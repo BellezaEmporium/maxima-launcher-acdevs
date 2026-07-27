@@ -569,7 +569,7 @@ impl BridgeThread {
                             .path(path)
                             .build()?;
                         maxima.content_manager().add_install(game).await?;
-                        Self::update_queue(maxima.content_manager(), backend_responder.clone()); // ← add this
+                        Self::update_queue(maxima.content_manager(), backend_responder.clone());
                         Ok(())
                     }
                     MaximaLibRequest::CancelInstallRequest(offer) => {

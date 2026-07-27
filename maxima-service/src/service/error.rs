@@ -18,6 +18,8 @@ pub enum ServerError {
     InvalidInjectionTarget,
     #[error("timed out waiting for the HTTP server to bind")]
     BindTimeout,
+    #[error("HTTP server stopped unexpectedly")]
+    HttpServerStopped,
 }
 
 impl error::ResponseError for ServerError {

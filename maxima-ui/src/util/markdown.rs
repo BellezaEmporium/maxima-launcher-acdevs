@@ -4,6 +4,8 @@ pub fn html_to_easymark(html: &str) -> String {
         .replace("\n", "")
         .replace("*", "\\*")
         .replace("<br>", "\n")
+        .replace("<div>", "")
+        .replace("</div>", "\n")
         .replace("<b>", "*")
         .replace("</b>", "*")
         .replace("<span style=\"font-size: small;\">", "") // WE DO NOT CARE 🗣️
