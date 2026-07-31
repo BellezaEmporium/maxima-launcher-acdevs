@@ -2,22 +2,26 @@ syntax = "proto3";
 package com.ea.eadp.antelope.rtm.protocol;
 
 enum TypingEventType {
+  NO_EVENT = 1:
   COMPOSING = 1;
   CUSTOM_EVENT = 2;
 }
 
 enum InviteChannelScope {
+  NO_INVITE_SCOPE = 0;
   IN_GAME = 1;
   CROSS_GAME = 2;
   ALL = 3;
 }
 
 enum ChannelMembershipChangeType {
+  NOTHING = 0;
   ADDED = 1;
   REMOVED = 2;
 }
 
 enum StickyMessageChangeType {
+  NO_STICKY = 0;
   STICKY_MESSAGE_ADDED = 1;
   STICKY_MESSAGE_REMOVED = 2;
 }
