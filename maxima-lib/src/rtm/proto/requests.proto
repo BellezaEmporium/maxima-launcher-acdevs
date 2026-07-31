@@ -11,10 +11,19 @@ message ReconnectRequestV1 {
   string sessionKey = 1;
 }
 
+message LoginRequest {
+  string token = 1;
+  bool reconnect = 2;
+  bool heartbeat = 3;
+}
+
 message LoginRequestV1 {
   string token = 1;
   bool reconnect = 2;
   bool heartbeat = 3;
+}
+
+message LogoutRequest {
 }
 
 message LoginRequestV2 {
@@ -43,6 +52,39 @@ message PresenceUpdateV1 {
     BasicPresenceType basicPresenceType = 2;
     string userDefinedPresence = 3;
     RichPresenceV1 richPresence = 4;
+}
+
+message PublishTextRequest {
+  string channelId = 1;
+  string text = 2;
+  com.ea.eadp.antelope.rtm.protocol.MessageType messageType = 3;
+  int32 index = 4;
+  string metadata = 5;
+  com.ea.eadp.antelope.rtm.protocol.StringId textMessageId = 6;
+  com.ea.eadp.antelope.rtm.protocol.MessageContext messageContext = 7;
+  repeated com.ea.eadp.antelope.rtm.protocol.ChatPropertyBagEntry chatProperties = 8;
+}
+
+message PublishBinaryRequest {
+  string channelId = 1;
+  bytes blob = 2;
+  string metadata = 3;
+}
+
+message SubscribeRequest {
+  string channelId = 1;
+}
+
+message UnsubscribeRequest {
+  string channelId = 1;
+}
+
+message HistoryRequest {
+  string channelId = 1;
+  string timestamp = 2;
+  int32 recordCount = 3;
+  string primaryFilterType = 4;
+  string secondaryFilterType = 5;
 }
 
 message HeartbeatV1 {}
