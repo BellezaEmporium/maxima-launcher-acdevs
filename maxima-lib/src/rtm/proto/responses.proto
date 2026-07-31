@@ -50,3 +50,4 @@ message PresenceV1 {
 	optional string clientVersion = 9;
 	optional PlatformV1 platform = 10;
 }
+
