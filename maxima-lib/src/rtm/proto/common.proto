@@ -1,57 +1,93 @@
 syntax = "proto3";
-package eadp.rtm;
+package com.ea.eadp.antelope.rtm.protocol;
 
 enum PlatformV1 {
-    NONE_PLATFORM = 0;
-    UNKNOWN_PLATFORM = 1;
-    MOBILE = 2;
-    PC = 3;
-    WEB = 4;
-    XBOXLIVE = 5;
-    PSN = 6;
-    SWITCH = 7;
-    STEAM = 8;
-    XBSK = 9;
-    PS5 = 10;
+  NONE_PLATFORM = 1;
+  UNKNOWN_PLATFORM = 1;
+  MOBILE = 2;
+  PC = 3;
+  WEB = 4;
+  XBOXLIVE = 5;
+  PSN = 6;
+  SWITCH = 7;
+  STEAM = 8;
+  XBSK = 9;
+  PS5 = 10;
 }
 
 enum UserType {
-    NONE_USER_TYPE = 0;
-	PERSONA = 1;
-	NUCLEUS = 2;
+  NONE_USERTYPE = 0;
+  PERSONA = 1;
+  NUCLEUS = 2;
 }
 
 enum BasicPresenceType {
-	NONE_PRESENCE = 0;
-	UNKNOWN_PRESENCE = 1;
-	OFFLINE = 2;
-	ONLINE = 3;
-	DND = 4;
-	AWAY = 5;
-	INVISIBLE = 6;
-	CUSTOM = 7;
+  NONE_PRESENCE = 0;
+  UNKNOWN_PRESENCE = 1;
+  OFFLINE = 2;
+  ONLINE = 3;
+  DND = 4;
+  AWAY = 5;
+  INVISIBLE = 6;
+  CUSTOM = 7;
 }
 
 enum RichPresenceType {
-	NONE_RICH_PRESENCE = 0;
-	UNKNOWN_RICH_PRESENCE = 1;
-	LFG = 2;
-	BROADCASTING = 3;
+  NONE_RICH_PRESENCE = 0;
+  UNKNOWN_RICH_PRESENCE = 1;
+  LFG = 2;
+  BROADCASTING = 3;
+}
+
+message PresenceV1 {
+  string personaId = 1;
+  string status = 2;
+  string timestamp = 3;
+  Player player = 4;
+  BasicPresenceType basicPresenceType = 5;
+  string userDefinedPresence = 6;
+  RichPresenceV1 richPresence = 7;
+  string sessionKey = 8;
+  string clientVersion = 9;
+  PlatformV1 platform = 10;
+}
+
+message PresenceUpdateErrorV1 {
+  string errorCode = 1;
+  string errorMessage = 2;
+}
+
+message PresenceSubscriptionErrorV1 {
+  string personaId = 1;
+  string errorCode = 2;
+  string errorMessage = 3;
+  Player player = 4;
+}
+
+message PresenceSubscriptionAllFriendsErrorV1 {
+  string errorCode = 1;
+  string errorMessage = 2;
 }
 
 message RichPresenceV1 {
-	string game = 1;
-	PlatformV1 platform = 2;
-	string gameModeType = 3;
-	string gameMode = 4;
-	string gameSessionData = 5;
-	RichPresenceType richPresenceType = 6;
-	string startTimestamp = 7;
-	string endTimestamp = 8;
-	string customRichPresenceData = 9;
+  string game = 1;
+  PlatformV1 platform = 2;
+  string gameModeType = 3;
+  string gameMode = 4;
+  string gameSessionData = 5;
+  RichPresenceType richPresenceType = 6;
+  string startTimestamp = 7;
+  string endTimestamp = 8;
+  string customRichPresenceData = 9;
 }
 
 message Player {
-    string playerId = 1;
-    string productId = 2;
+  string playerId = 1;
+  string productId = 2;
+}
+
+message PlayerInfo {
+  Player player = 1;
+  string displayName = 2;
+  string nickName = 3;
 }
