@@ -1,5 +1,5 @@
 syntax = "proto3";
-package eadp.rtm;
+package com.ea.eadp.antelope.rtm.protocol;
 
 import "common.proto";
 
@@ -7,23 +7,35 @@ message PresenceSubscribeV1 {
     repeated Player players = 2;
 }
 
-message LoginRequestV3 {
-	string token = 1;
-
-	bool reconnect = 2;
-	bool heartbeat = 3;
-    
-	UserType userType = 4;
-	string productId = 5;
-	PlatformV1 platform = 6;
-	string clientVersion = 7;
-
-	optional string sessionKey = 8;
-	optional string forceDisconnectSessionKey = 9;
+message ReconnectRequestV1 {
+  string sessionKey = 1;
 }
 
-message ReconnectRequestV1 {
-    string sessionKey = 1;
+message LoginRequestV1 {
+  string token = 1;
+  bool reconnect = 2;
+  bool heartbeat = 3;
+}
+
+message LoginRequestV2 {
+  string token = 1;
+  bool reconnect = 2;
+  bool heartbeat = 3;
+  UserType userType = 4;
+  string productId = 5;
+  bool singleSessionForceLogout = 6;
+}
+
+message LoginRequestV3 {
+  string token = 1;
+  bool reconnect = 2;
+  bool heartbeat = 3;
+  UserType userType = 4;
+  string productId = 5;
+  PlatformV1 platform = 6;
+  string clientVersion = 7;
+  string sessionKey = 8;
+  string forceDisconnectSessionKey = 9;
 }
 
 message PresenceUpdateV1 {
