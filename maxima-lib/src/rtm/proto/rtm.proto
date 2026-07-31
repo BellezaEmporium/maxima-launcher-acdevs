@@ -1,5 +1,5 @@
 syntax = "proto3";
-package eadp.rtm;
+package com.ea.eadp.antelope.rtm.protocol;
 
 import "common.proto";
 import "requests.proto";
@@ -7,26 +7,65 @@ import "responses.proto";
 import "chat.proto";
 
 message Communication {
+  oneof body {
     CommunicationV1 v1 = 1;
+  }
 }
 
 message CommunicationV1 {
-    string requestId = 1;
-
-    oneof body {
-        PresenceSubscribeV1 presenceSubscribe = 2;
-        PresenceUpdateV1 presenceUpdate = 5;
-        PresenceV1 presence = 7;
-        PlayerContextV1 playerContext = 9;
-        ConversationChannelV1 conversationChannel = 11;
-        ConversationHistoryRequestV1 historyRequest = 12;  // outer msg, not oneof
-        ErrorV1 error = 13;
-        ReconnectRequestV1 reconnectRequest = 14;
-        SuccessV1 success = 15;
-        HeartbeatV1 heartbeat = 20;
-        TypingEventV1 typingEvent = 43;
-        string unknown44 = 44; // unsure yet
-        LoginRequestV3 loginRequestV3 = 46;
-        SessionCleanupV1 sessionCleanupV1 = 49;
-    }
+  oneof body {
+    PresenceSubscribeV1 presenceSubscribe = 2;
+    PresenceUnsubscribeV1 presenceUnsubscribe = 3;
+    PresenceSubscriptionErrorV1 presenceSubscriptionError = 4;
+    PresenceUpdateV1 presenceUpdate = 5;
+    PresenceUpdateErrorV1 presenceUpdateError = 6;
+    PresenceV1 presence = 7;
+    NotificationV1 notification = 8;
+    ChatInitiateV1 chatInitiate = 9;
+    ChatLeaveV1 chatLeave = 10;
+    ChatMembersRequestV1 chatMembersRequest = 11;
+    ChatMembersV1 chatMembers = 12;
+    ErrorV1 error = 13;
+    ReconnectRequestV1 reconnectRequest = 14;
+    SuccessV1 success = 15;
+    PointToPointMessageV1 pointToPointMessage = 16;
+    ChatChannelsRequestV1 chatChannelsRequest = 17;
+    ChatChannelsV1 chatChannels = 18;
+    LoginRequestV1 loginRequest = 19;
+    HeartbeatV1 heartbeat = 20;
+    WorldChatAssignV1 worldChatAssign = 21;
+    WorldChatResponseV1 worldChatResponse = 22;
+    MuteUserV1 muteUser = 23;
+    UnmuteUserV1 unmuteUser = 24;
+    UserMembershipChangeV1 userMembershipChange = 25;
+    WorldChatConfigurationRequestV1 worldChatConfigurationRequestV1 = 26;
+    WorldChatConfigurationResponseV1 worldChatConfigurationResponse = 27;
+    WorldChatChannelsRequestV1 worldChatChannelsRequestV1 = 28;
+    WorldChatChannelsResponseV1 worldChatChannelsResponse = 29;
+    PromoteStickyMessageRequestV1 promoteStickyMessageRequest = 30;
+    RemoveStickyMessageRequestV1 removeStickyMessageRequest = 31;
+    FetchStickyMessagesRequestV1 fetchStickyMessagesRequest = 32;
+    StickyMessageResponseV1 stickyMessageResponse = 33;
+    GetRolesRequest rolesRequest = 34;
+    GetRolesResponse rolesResponse = 35;
+    UpdatePreferenceRequestV1 preferenceRequest = 36;
+    GetPreferenceRequestV1 getPreferenceRequest = 37;
+    GetPreferenceResponseV1 getPreferenceResponse = 38;
+    LoginRequestV2 loginRequestV2 = 39;
+    SessionNotificationV1 sessionNotification = 40;
+    ChatTypingEventRequestV1 chatTypingEventRequest = 41;
+    ChatChannelsRequestV2 chatChannelsRequestV2 = 42;
+    ChatChannelUpdateV1 chatChannelUpdate = 43;
+    ServerConfigRequestV1 serverConfigRequest = 44;
+    ServerConfigV1 serverConfig = 45;
+    LoginRequestV3 loginRequestV3 = 46;
+    SessionRequestV1 sessionRequestV1 = 47;
+    SessionResponseV1 sessionResponseV1 = 48;
+    SessionCleanupV1 sessionCleanupV1 = 49;
+    WorldChatNotificationV1 worldChatNotificationV1 = 50;
+    PresenceSubscribeAllFriendsV1 presenceSubscribeAllFriendsV1 = 51;
+    PresenceSubscriptionAllFriendsErrorV1 presenceSubscriptionAllFriendsErrorV1 = 52;
+  }
+  string requestId = 1;
 }
+
