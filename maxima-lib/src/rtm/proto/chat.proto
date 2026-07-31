@@ -1,30 +1,241 @@
 syntax = "proto3";
-package eadp.rtm;
+package com.ea.eadp.antelope.rtm.protocol;
 
-// incomplete, wip
-
-message ConversationChannelV1 {
-  string channel_id = 1;  // e.g. "<nucID1>-<nucID2>-CrossGame"
+enum TypingEventType {
+  COMPOSING = 1;
+  CUSTOM_EVENT = 2;
 }
 
-message ConversationHistoryRequestV1 {
-  string channel_id = 1;
-  string timestamp = 2;
-  int32 limit = 3;
-  string message_type = 4;  // "TEXT_MESSAGE"
+enum InviteChannelScope {
+  IN_GAME = 1;
+  CROSS_GAME = 2;
+  ALL = 3;
 }
 
-message TypingEventV1 {
-  string channel_id = 1;
-  string timestamp = 2;
+enum ChannelMembershipChangeType {
+  ADDED = 1;
+  REMOVED = 2;
 }
 
-message PlayerContextV1 {
-  PlayerRef player = 2;
-  int32 unknown3 = 3;
+enum StickyMessageChangeType {
+  STICKY_MESSAGE_ADDED = 1;
+  STICKY_MESSAGE_REMOVED = 2;
 }
 
-message PlayerRef {
-  string player_id = 1;
-  string product_id = 2;  // "origin"
+message ChatInitiateV1 {
+  repeated string personaIds = 1;
+  repeated Player players = 2;
+  bool crossGame = 3;
+}
+
+message ChatLeaveV1 {
+  string channelId = 1;
+}
+
+message ChatMembersRequestV1 {
+  repeated string channelId = 1;
+  ChannelType channelType = 2;
+  int32 fromIndex = 3;
+  int32 pageSize = 4;
+}
+
+message ChatChannelsRequestV1 {
+  bool includeUnreadMessageCount = 1;
+  bool includeLastMessageInfo = 2;
+  InviteChannelScope inviteChannelScope = 3;
+  repeated ChannelType channelTypes = 4;
+}
+
+message ChatChannelsRequestV2 {
+  bool includeLastMessageInfo = 1;
+  bool includeUnreadMessageInfo = 2;
+  repeated ChannelMessageType unreadMessageTypes = 3;
+  bool includeCustomProperties = 4;
+  InviteChannelScope inviteChannelScope = 5;
+  repeated ChannelType channelTypes = 6;
+}
+
+message WorldChatConfigurationRequestV1 {
+}
+
+message WorldChatChannelsRequestV1 {
+  string worldName = 1;
+  int32 fromIndex = 2;
+  int32 pageSize = 3;
+}
+
+message WorldChatAssignV1 {
+  string worldName = 1;
+  int32 shardIndex = 2;
+}
+
+message MuteUserV1 {
+  string channelId = 1;
+  string personaId = 2;
+  Player player = 3;
+}
+
+message UnmuteUserV1 {
+  string channelId = 1;
+  string personaId = 2;
+  Player player = 3;
+}
+
+message PromoteStickyMessageRequestV1 {
+  string channelId = 1;
+  string messageId = 2;
+  string timestamp = 3;
+  int32 index = 4;
+}
+
+message RemoveStickyMessageRequestV1 {
+  string channelId = 1;
+  int32 index = 2;
+}
+
+message FetchStickyMessagesRequestV1 {
+  string channelId = 1;
+}
+
+message ChatTypingEventRequestV1 {
+  string channelId = 1;
+  TypingEventType event = 2;
+  string customTypingEvent = 3;
+}
+
+message ChatMembersV1 {
+  string channelId = 1;
+  repeated PersonaV1 users = 2;
+  int32 totalMemberCount = 3;
+  repeated PlayerInfo players = 4;
+}
+
+message ChatChannelsV1 {
+  repeated ChannelV1 channels = 1;
+  repeated ChannelMuteListV1 muteList = 2;
+  string lastOnlineTimestamp = 3;
+}
+
+message WorldChatResponseV1 {
+  string channelId = 1;
+  int32 remainingDailyShardSwitchCount = 2;
+  int32 shardIndex = 3;
+  string worldName = 4;
+  string previousChannelId = 5;
+  int32 previousShardIndex = 6;
+  repeated ChannelMuteListV1 muteList = 7;
+  string channelName = 8;
+}
+
+message WorldChatConfigurationResponseV1 {
+  int32 remainingDailyShardSwitchCount = 1;
+  int32 maxShards = 2;
+  int32 maxShardSize = 3;
+  int32 maxWorldNamesPerGame = 4;
+  int32 maxDailyShardSwitchCount = 5;
+}
+
+message WorldChatChannelsResponseV1 {
+  string worldName = 1;
+  repeated WorldChatShard shard = 2;
+  int32 totalShardCount = 3;
+}
+
+message WorldChatShard {
+  int32 index = 1;
+  int32 size = 2;
+}
+
+message StickyMessageResponseV1 {
+  string channelId = 1;
+  repeated StickyMessageV1 message = 2;
+}
+
+message ChatConnectedV1 {
+  PersonaV1 user = 1;
+  PlayerInfo players = 2;
+}
+
+message ChatDisconnectedV1 {
+  PersonaV1 user = 1;
+  PlayerInfo players = 2;
+}
+
+message ChatLeftV1 {
+  PersonaV1 user = 1;
+  PlayerInfo players = 2;
+}
+
+message ChatUserMutedV1 {
+  PersonaV1 mutedUser = 1;
+  PersonaV1 mutedByUser = 2;
+  PlayerInfo mutedPlayer = 3;
+  PlayerInfo mutedByPlayer = 4;
+}
+
+message ChatUserUnmutedV1 {
+  PersonaV1 unmutedUser = 1;
+  PersonaV1 unmutedByUser = 2;
+  PlayerInfo unmutedPlayer = 3;
+  PlayerInfo unmutedByPlayer = 4;
+}
+
+message ChannelMembershipChangeV1 {
+  ChannelMembershipChangeType type = 1;
+  repeated PersonaV1 users = 2;
+  repeated PlayerInfo players = 3;
+}
+
+message StickyMessageChangedV1 {
+  StickyMessageChangeType stickyMessageChangeType = 1;
+  StickyMessageV1 stickyMessage = 2;
+  int32 index = 3;
+}
+
+message ChatTypingEventV1 {
+  TypingEventType event = 1;
+  string customTypingEvent = 2;
+  Player fromPlayer = 3;
+  string fromDisplayName = 4;
+  string fromNickName = 5;
+  string fromPlatformDisplayName = 6;
+  string fromPlatformNickName = 7;
+}
+
+message WorldChatMembershipChangeV1 {
+  ChannelMembershipChangeType type = 1;
+  PlayerInfo playerInfo = 2;
+}
+
+message GroupMemberAttributeChangeV1 {
+  Player targetPlayer = 1;
+  string targetDisplayName = 2;
+  string targetNickName = 3;
+  string updatedTargetAttributes = 4;
+  Player initiatorPlayer = 5;
+  string initiatorDisplayName = 6;
+  string initiatorNickName = 7;
+  string initiatorAttributes = 8;
+}
+
+message GroupAttributeChangeV1 {
+  PlayerInfo initiatorPlayerInfo = 1;
+  string attributeName = 2;
+  string attributeDetail = 3;
+  string oldValue = 4;
+  string newValue = 5;
+  string timestamp = 6;
+}
+
+message GroupMemberRoleChangeV1 {
+  PlayerInfo initiatorPlayerInfo = 1;
+  PlayerInfo targetPlayerInfo = 2;
+  string newRole = 3;
+  string timestamp = 4;
+}
+
+message ChatChannelUpdateV1 {
+  string channelId = 1;
+  string lastReadTimestamp = 2;
+  string customProperties = 3;
 }
