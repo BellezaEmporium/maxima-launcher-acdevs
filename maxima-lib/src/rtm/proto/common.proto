@@ -39,6 +39,43 @@ enum RichPresenceType {
   BROADCASTING = 3;
 }
 
+enum CommunicationType {
+  NO_COMMUNICATION_TYPE = 0;
+  LOGIN_REQUEST = 1;
+  LOGIN_RESPONSE = 2;
+  PUBLISH_TEXT_REQUEST = 3;
+  PUBLISH_BINARY_REQUEST = 4;
+  PUBLISH_RESPONSE = 5;
+  CHANNEL_MESSAGE = 6;
+  SUBSCRIBE_REQUEST = 7;
+  SUBSCRIBE_RESPONSE = 8;
+  UNSUBSCRIBE_REQUEST = 9;
+  UNSUBSCRIBE_RESPONSE = 10;
+  HISTORY_REQUEST = 11;
+  HISTORY_RESPONSE = 12;
+  LOGOUT_REQUEST = 13;
+}
+
+enum ChannelMessageType {
+  NO_CHANNEL_MESSAGE_TYPE = 0;
+  TEXT_MESSAGE = 1;
+  BINARY_MESSAGE = 2;
+  GROUP_MEMBERSHIP_CHANGE = 3;
+  CHAT_CONNECTED = 4;
+  CHAT_DISCONNECTED = 5;
+  CHAT_LEFT = 6;
+  CUSTOM_MESSAGE = 7;
+  CHAT_USER_MUTED = 8;
+  CHAT_USER_UNMUTED = 9;
+  CHANNEL_MEMBERSHIP_CHANGE = 10;
+  STICKY_MESSAGE_CHANGED = 11;
+  CHAT_TYPING_EVENT = 12;
+  WORLD_CHAT_MEMBERSHIP_CHANGE = 13;
+  GROUP_MEMBER_ATTRIBUTE_CHANGE = 14;
+  GROUP_ATTRIBUTE_CHANGE = 15;
+  GROUP_MEMBER_ROLE_CHANGE = 16;
+}
+
 message PresenceV1 {
   string personaId = 1;
   string status = 2;
@@ -81,13 +118,71 @@ message RichPresenceV1 {
   string customRichPresenceData = 9;
 }
 
-message Player {
-  string playerId = 1;
-  string productId = 2;
+message Header {
+  CommunicationType type = 1;
+  string requestId = 2;
 }
 
-message PlayerInfo {
-  Player player = 1;
-  string displayName = 2;
-  string nickName = 3;
+message Player {
+  string playerId = 1;
+  string productId = 4;
+}
+
+message Channel {
+  string channelId = 1;
+  string channelName = 2;
+  com.ea.eadp.antelope.rtm.protocol.ChannelType type = 3;
+  bool crossGame = 4;
+}
+
+message ChannelMessage {
+  oneof content {
+    TextMessage textMessage = 5;
+    BinaryMessage binaryMessage = 6;
+    GroupMembershipChange membershipChange = 7;
+    com.ea.eadp.antelope.rtm.protocol.ChatConnectedV1 chatConnected = 8;
+    com.ea.eadp.antelope.rtm.protocol.ChatDisconnectedV1 chatDisconnected = 9;
+    com.ea.eadp.antelope.rtm.protocol.ChatLeftV1 chatLeft = 10;
+    com.ea.eadp.antelope.rtm.protocol.CustomMessage customMessage = 11;
+    com.ea.eadp.antelope.rtm.protocol.ChatUserMutedV1 chatUserMuted = 12;
+    com.ea.eadp.antelope.rtm.protocol.ChatUserUnmutedV1 chatUserUnmuted = 13;
+    com.ea.eadp.antelope.rtm.protocol.ChannelMembershipChangeV1 channelMembershipChange = 14;
+    com.ea.eadp.antelope.rtm.protocol.StickyMessageChangedV1 stickyMessageChanged = 15;
+    com.ea.eadp.antelope.rtm.protocol.ChatTypingEventV1 chatTypingEvent = 16;
+    com.ea.eadp.antelope.rtm.protocol.WorldChatMembershipChangeV1 worldChatMembershipChange = 17;
+    com.ea.eadp.antelope.rtm.protocol.GroupMemberAttributeChangeV1 groupMemberAttributeChange = 18;
+    com.ea.eadp.antelope.rtm.protocol.GroupAttributeChangeV1 groupAttributeChange = 19;
+    com.ea.eadp.antelope.rtm.protocol.GroupMemberRoleChangeV1 groupMemberRoleChange = 20;
+  }
+  string messageId = 1;
+  string channelId = 2;
+  string timestamp = 3;
+  ChannelMessageType type = 4;
+}
+
+message TextMessage {
+  string fromPersonaId = 1;
+  string fromDisplayName = 2;
+  string text = 3;
+  string originalText = 4;
+  Player fromPlayer = 5;
+  string fromNickName = 6;
+  string fromPlatformDisplayName = 7;
+  string fromPlatformNickName = 8;
+  string metadata = 9;
+  com.ea.eadp.antelope.rtm.protocol.MessageType messageType = 10;
+  com.ea.eadp.antelope.rtm.protocol.StringId textMessageId = 11;
+  com.ea.eadp.antelope.rtm.protocol.MessageContext messageContext = 12;
+  repeated com.ea.eadp.antelope.rtm.protocol.ChatPropertyBagEntry chatPropertyBag = 13;
+}
+
+message BinaryMessage {
+  string fromPersonaId = 1;
+  string fromDisplayName = 2;
+  bytes blob = 3;
+  Player fromPlayer = 4;
+  string fromNickName = 5;
+  string fromPlatformDisplayName = 6;
+  string fromPlatformNickName = 7;
+  string metadata = 8;
 }
