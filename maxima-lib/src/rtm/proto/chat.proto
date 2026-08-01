@@ -1,9 +1,13 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.rtm.protocol;
+import "player.proto";
+import "common.proto";
+import "enum.proto";
+
+package antelope.rtm;
 
 enum TypingEventType {
-  NO_EVENT = 1:
+  NO_EVENT = 0;
   COMPOSING = 1;
   CUSTOM_EVENT = 2;
 }

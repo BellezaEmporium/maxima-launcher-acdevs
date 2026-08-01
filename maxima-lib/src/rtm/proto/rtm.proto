@@ -1,6 +1,16 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.rtm.protocol;
+import "presence.proto";
+import "common.proto";
+import "chat.proto";
+import "notification.proto";
+import "error.proto";
+import "point_to_point.proto";
+import "moderation.proto";
+import "preference.proto";
+import "config.proto";
+
+package antelope.rtm;
 
 message Communication {
   oneof body {

@@ -139,13 +139,18 @@ impl RtmConnectionManager {
 
                                 let buf = bytes.split_to(expected_size as usize).freeze();
                                 let msg = Communication::decode(buf)?;
-                                let id = &msg.v1.as_ref().ok_or(RtmError::NoBody)?.request_id;
+                                let id = match msg.body.as_ref() {
+                                    Some(crate::rtm::proto::communication::Body::V1(v1)) => &v1.request_id,
+                                    _ => return Err(Box::new(RtmError::NoBody)),
+                                };
 
                                 if let Some(tx) =
                                     pending_responses.remove(id)
                                 {
                                     let _ = tx.send(msg);
-                                } else if id.is_empty() && let Some(body) = &msg.v1.as_ref().ok_or(RtmError::NoBody)?.body {
+                                } else if id.is_empty()
+                                    && let Some(crate::rtm::proto::communication::Body::V1(v1)) = &msg.body
+                                    && let Some(body) = &v1.body {
                                     update_presence_tx.send(body.clone()).await?;
                                 }
 
@@ -161,10 +166,12 @@ impl RtmConnectionManager {
                 request = request_rx.recv(), if expected_size == -1 => {
                     if let Some(request) = request {
                         let communication = Communication {
-                            v1: Some(CommunicationV1 {
-                                request_id: request.id.to_owned(),
-                                body: Some(request.payload),
-                            }),
+                            body: Some(crate::rtm::proto::communication::Body::V1(
+                                CommunicationV1 {
+                                    request_id: request.id.to_owned(),
+                                    body: Some(request.payload),
+                                }
+                            )),
                         };
 
                         let mut buf = BytesMut::new();
@@ -201,12 +208,15 @@ impl RtmConnectionManager {
             .await?;
 
         match response_rx.await {
-            Ok(response) => Ok(response
-                .v1
-                .ok_or(RtmError::NoBody)?
-                .body
-                .ok_or(RtmError::NoBody)?),
-            Err(_) => Err(RtmError::Io(io::Error::other("Failed to receive response"))),
+            Ok(response) => match response.body {
+                Some(crate::rtm::proto::communication::Body::V1(v1)) => {
+                    v1.body.ok_or(RtmError::NoBody)
+                }
+                _ => Err(RtmError::NoBody),
+            },
+            Err(_) => Err(RtmError::Io(io::Error::other(
+                "Failed to receive response",
+            ))),
         }
     }
 

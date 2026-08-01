@@ -57,6 +57,10 @@ impl EventThread {
     ) -> Result<(), BackendError> {
         let mut maxima = maxima_arc.lock().await;
 
+        let user = maxima.local_user().await?;
+        let player = user.player().as_ref().unwrap();
+        let persona_id: Vec<String> = vec![player.psd().to_string()];
+
         let friends: ServiceFriends = maxima
             .service_layer()
             .request(
@@ -77,7 +81,7 @@ impl EventThread {
             friends.friends().items().iter().map(|f| f.id().to_owned()).collect();
         info!("Subscribed to {} players", players.len());
 
-        rtm.subscribe(&players).await?;
+        rtm.subscribe(persona_id, &players).await?;
         drop(maxima);
 
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));

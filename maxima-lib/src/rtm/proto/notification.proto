@@ -1,9 +1,13 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.rtm.protocol;
+import "chat.proto";
+import "common.proto";
+import "presence.proto";
+
+package antelope.rtm;
 
 enum SessionNotificationTypeV1 {
-  NOTHING = 0;
+  NO_SESSION_NOTIFICATION = 0;
   DEFAULT = 1;
   FORCE_DISCONNECT = 2;
   USER_LOGGED_IN = 3;

@@ -1,5 +1,5 @@
 pub mod proto {
-    include!(concat!(env!("OUT_DIR"), "/eadp.rtm.rs"));
+    include!(concat!(env!("OUT_DIR"), "/antelope.rtm.rs"));
 }
 
 pub mod client;

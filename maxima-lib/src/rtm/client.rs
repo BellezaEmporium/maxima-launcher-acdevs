@@ -12,7 +12,7 @@ use super::{
     RtmError,
     connection::RtmConnectionManager,
     proto::{
-        BasicPresenceType, HeartbeatV1, LoginV3Response, Player, PresenceUpdateV1,
+        BasicPresenceType, HeartbeatV1, LoginV3Response, Player, PresenceUpdateV1, PresenceSubscribeAllFriendsV1,
         RichPresenceType, RichPresenceV1, SessionCleanupV1, communication_v1, success_v1,
     },
 };
@@ -36,15 +36,12 @@ macro_rules! send_rtm_request {
                 async move {
                     match fut.await? {
                         communication_v1::Body::Success(success) => {
-                            if let Some(body) = success.body {
-                                if matches!(body, success_v1::Body::$response_body_name(_)) {
-                                    let success_v1::Body::$response_body_name(data) = body;
-                                    Ok(data)
-                                } else {
-                                    Err(RtmError::InvalidResponse(body))
-                                }
-                            } else {
-                                Err(RtmError::NoBody)
+                            match success.body {
+                                Some(body) => match body {
+                                    success_v1::Body::$response_body_name(data) => Ok(data),
+                                    body => Err(RtmError::InvalidResponse(body)),
+                                },
+                                None => Err(RtmError::NoBody),
                             }
                         }
                         communication_v1::Body::Error(err) => Err(RtmError::V1(err)),
@@ -52,7 +49,12 @@ macro_rules! send_rtm_request {
                     }
                 }
             }
-            _rtm_transform($connection_manager.send_request(communication_v1::Body::$request_body_name($comm_name $comm_initializer)))
+
+            _rtm_transform(
+                $connection_manager.send_request(
+                    communication_v1::Body::$request_body_name($comm_name $comm_initializer)
+                )
+            )
         }
     };
 }
@@ -166,15 +168,12 @@ impl RtmClient {
     ) -> Result<(), RtmError> {
         match body {
             communication_v1::Body::Presence(presence) => {
-                if presence.client_version.is_none() {
+                if presence.client_version.is_empty() {
                     return Ok(());
                 }
 
                 let res: ClientVersion = serde_json::from_str(
-                    presence
-                        .client_version
-                        .as_ref()
-                        .ok_or(RtmError::InvalidClientVersion)?,
+                    &presence.client_version,
                 )?;
 
                 if res.client_type != "Client" && res.client_type != "LegacyClient" {
@@ -229,8 +228,8 @@ impl RtmClient {
             product_id: "origin".to_owned(),
             platform: PlatformV1::Pc as i32,
             client_version: serde_json::to_string(&client_version)?,
-            session_key: None,
-            force_disconnect_session_key: None,
+            session_key: String::new(),
+            force_disconnect_session_key: String::new(),
         }).await?;
 
         for ele in res.connected_sessions {
@@ -250,11 +249,9 @@ impl RtmClient {
     pub async fn set_presence(
         &mut self,
         basic_presence: BasicPresence,
-        status: &str,
-        offer_id: &str,
+        game_name: &str,        // e.g. "Apex Legends"
+        offer_id: &str,         // e.g. "Origin.OFR.50.0002148"
     ) -> Result<(), RtmError> {
-        info!("Updating RTM presence to '{}'", status);
-
         let rpc_data = CustomRichPresenceData {
             game_product_id: offer_id.to_owned(),
             version: 1,
@@ -268,12 +265,17 @@ impl RtmClient {
             BasicPresence::Online => BasicPresenceType::Online,
         };
 
+        // status is the JSON availability string, not a label
+        let status_json = serde_json::to_string(&serde_json::json!({
+            "presenceavailability": basic_presence_type.as_str_name().to_lowercase()
+        }))?;
+
         send_and_forget_rtm_request!(self.conn_man, PresenceUpdate, PresenceUpdateV1, {
-            status: "".to_owned(),
+            status: status_json,
             basic_presence_type: basic_presence_type as i32,
             user_defined_presence: "".to_owned(),
             rich_presence: Some(RichPresenceV1 {
-                game: status.to_owned(),
+                game: game_name.to_owned(),  // game name, not status text
                 platform: PlatformV1::Pc as i32,
                 game_mode_type: "".to_owned(),
                 game_mode: "".to_owned(),
@@ -288,10 +290,17 @@ impl RtmClient {
     }
 
     /// Subscribe to a list of user IDs' presences
-    pub async fn subscribe(&mut self, players: &[String]) -> Result<(), RtmError> {
+    pub async fn subscribe(&mut self, persona: Vec<String>, players: &[String]) -> Result<(), RtmError> {
         send_and_forget_rtm_request!(self.conn_man, PresenceSubscribe, PresenceSubscribeV1, {
+            persona_id: vec![],
             players: players.iter().map(|id| Player{ player_id: id.to_owned(), product_id: String::from("origin"), }).collect()
         })
+        .await
+    }
+
+    
+    pub async fn subscribe_all(&mut self) -> Result<(), RtmError> {
+        send_and_forget_rtm_request!(self.conn_man, PresenceSubscribeAllFriendsV1, PresenceSubscribeAllFriendsV1, {})
         .await
     }
 

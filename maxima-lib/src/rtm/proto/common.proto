@@ -1,6 +1,11 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.rtm.protocol;
+import "config.proto";
+import "player.proto";
+import "presence.proto";
+import "antelope_common.proto";
+
+package antelope.rtm;
 
 enum ChannelType {
   NO_CHANNEL_TYPE = 0;
@@ -137,11 +142,11 @@ message ChatPropertyDuration {
 }
 
 message MessageContext {
-  eadp.common.v1.PlayerNetworkId senderPlayerNetworkId = 1;
-  eadp.common.v1.DevicePlatformId senderDevicePlatformId = 2;
-  eadp.common.v1.ProductId senderProductId = 3;
-  eadp.common.v1.PlayerNetworkId receiverPlayerNetworkId = 4;
-  eadp.common.v1.DevicePlatformId receiverDevicePlatformId = 5;
+  .antelope.rtm.PlayerNetworkId senderPlayerNetworkId = 1;
+  .antelope.rtm.DevicePlatformId senderDevicePlatformId = 2;
+  .antelope.rtm.ProductId senderProductId = 3;
+  .antelope.rtm.PlayerNetworkId receiverPlayerNetworkId = 4;
+  .antelope.rtm.DevicePlatformId receiverDevicePlatformId = 5;
   ContentType contentType = 6;
 }
 

@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.protocol;
+import "common.proto";
+
+package antelope.rtm;
 
 enum CommunicationType {
   NONE_COMMUNICATION_TYPE = 0;
@@ -84,7 +86,7 @@ message Player {
 message Channel {
   string channelId = 1;
   string channelName = 2;
-  com.ea.eadp.antelope.rtm.protocol.ChannelType type = 3;
+  ea.antelope.ChannelType type = 3;
   bool crossGame = 4;
 }
 
@@ -93,19 +95,19 @@ message ChannelMessage {
     TextMessage textMessage = 5;
     BinaryMessage binaryMessage = 6;
     GroupMembershipChange membershipChange = 7;
-    com.ea.eadp.antelope.rtm.protocol.ChatConnectedV1 chatConnected = 8;
-    com.ea.eadp.antelope.rtm.protocol.ChatDisconnectedV1 chatDisconnected = 9;
-    com.ea.eadp.antelope.rtm.protocol.ChatLeftV1 chatLeft = 10;
-    com.ea.eadp.antelope.rtm.protocol.CustomMessage customMessage = 11;
-    com.ea.eadp.antelope.rtm.protocol.ChatUserMutedV1 chatUserMuted = 12;
-    com.ea.eadp.antelope.rtm.protocol.ChatUserUnmutedV1 chatUserUnmuted = 13;
-    com.ea.eadp.antelope.rtm.protocol.ChannelMembershipChangeV1 channelMembershipChange = 14;
-    com.ea.eadp.antelope.rtm.protocol.StickyMessageChangedV1 stickyMessageChanged = 15;
-    com.ea.eadp.antelope.rtm.protocol.ChatTypingEventV1 chatTypingEvent = 16;
-    com.ea.eadp.antelope.rtm.protocol.WorldChatMembershipChangeV1 worldChatMembershipChange = 17;
-    com.ea.eadp.antelope.rtm.protocol.GroupMemberAttributeChangeV1 groupMemberAttributeChange = 18;
-    com.ea.eadp.antelope.rtm.protocol.GroupAttributeChangeV1 groupAttributeChange = 19;
-    com.ea.eadp.antelope.rtm.protocol.GroupMemberRoleChangeV1 groupMemberRoleChange = 20;
+    ea.antelope.ChatConnectedV1 chatConnected = 8;
+    ea.antelope.ChatDisconnectedV1 chatDisconnected = 9;
+    ea.antelope.ChatLeftV1 chatLeft = 10;
+    ea.antelope.CustomMessage customMessage = 11;
+    ea.antelope.ChatUserMutedV1 chatUserMuted = 12;
+    ea.antelope.ChatUserUnmutedV1 chatUserUnmuted = 13;
+    ea.antelope.ChannelMembershipChangeV1 channelMembershipChange = 14;
+    ea.antelope.StickyMessageChangedV1 stickyMessageChanged = 15;
+    ea.antelope.ChatTypingEventV1 chatTypingEvent = 16;
+    ea.antelope.WorldChatMembershipChangeV1 worldChatMembershipChange = 17;
+    ea.antelope.GroupMemberAttributeChangeV1 groupMemberAttributeChange = 18;
+    ea.antelope.GroupAttributeChangeV1 groupAttributeChange = 19;
+    ea.antelope.GroupMemberRoleChangeV1 groupMemberRoleChange = 20;
   }
   string messageId = 1;
   string channelId = 2;
@@ -123,10 +125,10 @@ message TextMessage {
   string fromPlatformDisplayName = 7;
   string fromPlatformNickName = 8;
   string metadata = 9;
-  com.ea.eadp.antelope.rtm.protocol.MessageType messageType = 10;
-  com.ea.eadp.antelope.rtm.protocol.StringId textMessageId = 11;
-  com.ea.eadp.antelope.rtm.protocol.MessageContext messageContext = 12;
-  repeated com.ea.eadp.antelope.rtm.protocol.ChatPropertyBagEntry chatPropertyBag = 13;
+  ea.antelope.MessageType messageType = 10;
+  ea.antelope.StringId textMessageId = 11;
+  ea.antelope.MessageContext messageContext = 12;
+  repeated ea.antelope.ChatPropertyBagEntry chatPropertyBag = 13;
 }
 
 message BinaryMessage {
@@ -166,7 +168,7 @@ message ChannelMuteList {
 
 message MutedUserV1 {
   string personaId = 1;
-  repeated com.ea.eadp.antelope.rtm.protocol.MutedByV1 mutedBy = 2;
+  repeated ea.antelope.MutedByV1 mutedBy = 2;
   Player player = 3;
 }
 
@@ -182,12 +184,12 @@ message LogoutRequest {
 message PublishTextRequest {
   string channelId = 1;
   string text = 2;
-  com.ea.eadp.antelope.rtm.protocol.MessageType messageType = 3;
+  ea.antelope.MessageType messageType = 3;
   int32 index = 4;
   string metadata = 5;
-  com.ea.eadp.antelope.rtm.protocol.StringId textMessageId = 6;
-  com.ea.eadp.antelope.rtm.protocol.MessageContext messageContext = 7;
-  repeated com.ea.eadp.antelope.rtm.protocol.ChatPropertyBagEntry chatProperties = 8;
+  ea.antelope.StringId textMessageId = 6;
+  ea.antelope.MessageContext messageContext = 7;
+  repeated ea.antelope.ChatPropertyBagEntry chatProperties = 8;
 }
 
 message PublishBinaryRequest {

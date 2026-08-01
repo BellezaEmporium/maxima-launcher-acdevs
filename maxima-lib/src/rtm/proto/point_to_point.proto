@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.rtm.protocol;
+import "player.proto";
+
+package antelope.rtm;
 
 enum Domain {
   NO_DOMAIN = 0;

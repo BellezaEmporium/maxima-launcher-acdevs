@@ -678,7 +678,7 @@ async fn test_rtm_connection(maxima_arc: LockedMaxima) -> Result<()> {
     let players: Vec<String> = friends.iter().map(|f| f.id().to_owned()).collect();
     info!("Subscribed to {} players", players.len());
 
-    rtm.subscribe(&players).await?;
+    rtm.subscribe_all().await?;
     drop(maxima);
 
     loop {
@@ -704,7 +704,7 @@ async fn test_rtm_connection(maxima_arc: LockedMaxima) -> Result<()> {
 
         drop(maxima);
 
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     }
 }
 
@@ -814,7 +814,7 @@ async fn start_game(
             let players: Vec<String> = friends.iter().map(|f| f.id().to_owned()).collect();
             info!("Subscribed to {} players", players.len());
 
-            maxima.rtm().subscribe(&players).await?;
+            maxima.rtm().subscribe_all().await?;
         }
     }
 

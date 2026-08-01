@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package com.ea.eadp.antelope.rtm.protocol;
+package antelope.rtm;
 
 enum ModerationRoleType {
   NO_MODERATION_ROLE = 0;

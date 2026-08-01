@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package antelope.rtm;
+
+message ProductId {
+  string id = 1;
+}
+
+message PlayerNetworkId {
+  string id = 1;
+}
+
+message DevicePlatformId {
+  string id = 1;
+}
