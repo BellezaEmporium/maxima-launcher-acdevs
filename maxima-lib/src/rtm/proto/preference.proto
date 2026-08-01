@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package com.ea.eadp.antelope.rtm.protocol;
+
+message UpdatePreferenceRequestV1 {
+  oneof body {
+    TranslationPreferenceV1 translation = 1;
+  }
+}
+
+message GetPreferenceRequestV1 {
+}
+
+message GetPreferenceResponseV1 {
+  TranslationPreferenceV1 translationPreference = 1;
+}
+
+message TranslationPreferenceV1 {
+  bool autoTranslate = 1;
+  string language = 2;
+}

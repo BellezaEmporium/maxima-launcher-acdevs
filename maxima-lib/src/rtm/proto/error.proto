@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package com.ea.eadp.antelope.rtm.protocol;
+
+message ErrorV1 {
+  oneof body {
+    ChatMembersRequestErrorV1 chatMembersRequestError = 3;
+    ValidationErrorV1 validationError = 4;
+    AssignErrorV1 assignError = 5;
+    ChatTypingEventRequestErrorV1 chatTypingEventRequestError = 6;
+    LoginErrorV1 loginError = 7;
+  }
+  string errorCode = 1;
+  string errorMessage = 2;
+}
+
+message ChatMembersRequestErrorV1 {
+  string channelId = 1;
+}
+
+message ValidationErrorV1 {
+  repeated FieldViolationV1 fieldViolation = 1;
+}
+
+message FieldViolationV1 {
+  string fieldName = 1;
+  string violationMessage = 2;
+}
+
+message AssignErrorV1 {
+  string worldName = 1;
+  int32 shardIndex = 2;
+}
+
+message ChatTypingEventRequestErrorV1 {
+  string channelId = 1;
+}
+
+message LoginErrorV1 {
+  repeated SessionV1 connectedSessions = 1;
+}

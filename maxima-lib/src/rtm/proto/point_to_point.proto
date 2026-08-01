@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package com.ea.eadp.antelope.rtm.protocol;
+
+enum Domain {
+  NO_DOMAIN = 0;
+  USER = 1;
+}
+
+message AddressV1 {
+  Domain domain = 1;
+  string id = 2;
+  Player player = 3;
+}
+
+message CustomMessage {
+  string type = 1;
+  bytes payload = 2;
+  string payloadType = 3;
+}
+
+message PointToPointMessageV1 {
+  oneof messageContent {
+    CustomMessage customMessage = 3;
+  }
+  AddressV1 from = 1;
+  AddressV1 to = 2;
+}

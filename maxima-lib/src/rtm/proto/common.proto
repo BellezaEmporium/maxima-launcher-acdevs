@@ -1,18 +1,33 @@
 syntax = "proto3";
+
 package com.ea.eadp.antelope.rtm.protocol;
 
-enum PlatformV1 {
-  NONE_PLATFORM = 1;
-  UNKNOWN_PLATFORM = 1;
-  MOBILE = 2;
-  PC = 3;
-  WEB = 4;
-  XBOXLIVE = 5;
-  PSN = 6;
-  SWITCH = 7;
-  STEAM = 8;
-  XBSK = 9;
-  PS5 = 10;
+enum ChannelType {
+  NO_CHANNEL_TYPE = 0;
+  EADP_GROUP_SERVICE = 1;
+  INVITE_CHANNEL = 2;
+  WORLD_CHAT = 3;
+  GAME = 4;
+}
+
+enum MutedByV1 {
+  NO_MUTE = 0;
+  ADMIN_MUTED = 1;
+  USER_MUTED = 2;
+}
+
+enum ContentTypeValue {
+  NO_CONTENT = 0;
+  GIFT = 1;
+  GAME_INVITE = 2;
+  OTHER = 3;
+}
+
+enum MessageType {
+  NO_MESSAGE = 0;
+  REGULAR_MESSAGE = 1;
+  STICKY_MESSAGE = 2;
+  QUICK_MESSAGE = 3;
 }
 
 enum UserType {
@@ -21,168 +36,145 @@ enum UserType {
   NUCLEUS = 2;
 }
 
-enum BasicPresenceType {
-  NONE_PRESENCE = 0;
-  UNKNOWN_PRESENCE = 1;
-  OFFLINE = 2;
-  ONLINE = 3;
-  DND = 4;
-  AWAY = 5;
-  INVISIBLE = 6;
-  CUSTOM = 7;
-}
-
-enum RichPresenceType {
-  NONE_RICH_PRESENCE = 0;
-  UNKNOWN_RICH_PRESENCE = 1;
-  LFG = 2;
-  BROADCASTING = 3;
-}
-
-enum CommunicationType {
-  NO_COMMUNICATION_TYPE = 0;
-  LOGIN_REQUEST = 1;
-  LOGIN_RESPONSE = 2;
-  PUBLISH_TEXT_REQUEST = 3;
-  PUBLISH_BINARY_REQUEST = 4;
-  PUBLISH_RESPONSE = 5;
-  CHANNEL_MESSAGE = 6;
-  SUBSCRIBE_REQUEST = 7;
-  SUBSCRIBE_RESPONSE = 8;
-  UNSUBSCRIBE_REQUEST = 9;
-  UNSUBSCRIBE_RESPONSE = 10;
-  HISTORY_REQUEST = 11;
-  HISTORY_RESPONSE = 12;
-  LOGOUT_REQUEST = 13;
-}
-
-enum ChannelMessageType {
-  NO_CHANNEL_MESSAGE_TYPE = 0;
-  TEXT_MESSAGE = 1;
-  BINARY_MESSAGE = 2;
-  GROUP_MEMBERSHIP_CHANGE = 3;
-  CHAT_CONNECTED = 4;
-  CHAT_DISCONNECTED = 5;
-  CHAT_LEFT = 6;
-  CUSTOM_MESSAGE = 7;
-  CHAT_USER_MUTED = 8;
-  CHAT_USER_UNMUTED = 9;
-  CHANNEL_MEMBERSHIP_CHANGE = 10;
-  STICKY_MESSAGE_CHANGED = 11;
-  CHAT_TYPING_EVENT = 12;
-  WORLD_CHAT_MEMBERSHIP_CHANGE = 13;
-  GROUP_MEMBER_ATTRIBUTE_CHANGE = 14;
-  GROUP_ATTRIBUTE_CHANGE = 15;
-  GROUP_MEMBER_ROLE_CHANGE = 16;
-}
-
-message PresenceV1 {
+message PersonaV1 {
   string personaId = 1;
-  string status = 2;
-  string timestamp = 3;
-  Player player = 4;
-  BasicPresenceType basicPresenceType = 5;
-  string userDefinedPresence = 6;
-  RichPresenceV1 richPresence = 7;
-  string sessionKey = 8;
-  string clientVersion = 9;
-  PlatformV1 platform = 10;
+  string displayName = 2;
+  string nickName = 3;
 }
 
-message PresenceUpdateErrorV1 {
-  string errorCode = 1;
-  string errorMessage = 2;
+message SuccessV1 {
+  oneof body {
+    LoginV2Success loginV2Success = 1;
+    ChatInitiateSuccessV1 chatInitiateSuccess = 2;
+    LoginV3Response loginV3Response = 3;
+  }
 }
 
-message PresenceSubscriptionErrorV1 {
-  string personaId = 1;
-  string errorCode = 2;
-  string errorMessage = 3;
-  Player player = 4;
+message LoginV2Success {
+  string sessionKey = 1;
 }
 
-message PresenceSubscriptionAllFriendsErrorV1 {
-  string errorCode = 1;
-  string errorMessage = 2;
+message ChatInitiateSuccessV1 {
+  ChannelV1 channel = 1;
 }
 
-message RichPresenceV1 {
-  string game = 1;
-  PlatformV1 platform = 2;
-  string gameModeType = 3;
-  string gameMode = 4;
-  string gameSessionData = 5;
-  RichPresenceType richPresenceType = 6;
-  string startTimestamp = 7;
-  string endTimestamp = 8;
-  string customRichPresenceData = 9;
+message MutedSetV1 {
+  repeated MutedByV1 mutedBy = 1;
 }
 
-message Header {
-  CommunicationType type = 1;
-  string requestId = 2;
-}
-
-message Player {
-  string playerId = 1;
-  string productId = 4;
-}
-
-message Channel {
+message ChannelV1 {
   string channelId = 1;
   string channelName = 2;
-  com.ea.eadp.antelope.rtm.protocol.ChannelType type = 3;
-  bool crossGame = 4;
+  ChannelType type = 3;
+  int32 unreadMessageCount = 4;
+  TextMessageV1 lastMessageInfo = 5;
+  string lastReadTimestamp = 6;
+  string customProperties = 7;
+  bool crossGame = 8;
 }
 
-message ChannelMessage {
-  oneof content {
-    TextMessage textMessage = 5;
-    BinaryMessage binaryMessage = 6;
-    GroupMembershipChange membershipChange = 7;
-    com.ea.eadp.antelope.rtm.protocol.ChatConnectedV1 chatConnected = 8;
-    com.ea.eadp.antelope.rtm.protocol.ChatDisconnectedV1 chatDisconnected = 9;
-    com.ea.eadp.antelope.rtm.protocol.ChatLeftV1 chatLeft = 10;
-    com.ea.eadp.antelope.rtm.protocol.CustomMessage customMessage = 11;
-    com.ea.eadp.antelope.rtm.protocol.ChatUserMutedV1 chatUserMuted = 12;
-    com.ea.eadp.antelope.rtm.protocol.ChatUserUnmutedV1 chatUserUnmuted = 13;
-    com.ea.eadp.antelope.rtm.protocol.ChannelMembershipChangeV1 channelMembershipChange = 14;
-    com.ea.eadp.antelope.rtm.protocol.StickyMessageChangedV1 stickyMessageChanged = 15;
-    com.ea.eadp.antelope.rtm.protocol.ChatTypingEventV1 chatTypingEvent = 16;
-    com.ea.eadp.antelope.rtm.protocol.WorldChatMembershipChangeV1 worldChatMembershipChange = 17;
-    com.ea.eadp.antelope.rtm.protocol.GroupMemberAttributeChangeV1 groupMemberAttributeChange = 18;
-    com.ea.eadp.antelope.rtm.protocol.GroupAttributeChangeV1 groupAttributeChange = 19;
-    com.ea.eadp.antelope.rtm.protocol.GroupMemberRoleChangeV1 groupMemberRoleChange = 20;
-  }
-  string messageId = 1;
-  string channelId = 2;
+message ChannelMuteListV1 {
+  string channelId = 1;
+  repeated PersonaV1 mutedUsers = 2;
+  repeated MutedSetV1 mutedBy = 3;
+  repeated Player mutedPlayers = 4;
+}
+
+message HeartbeatV1 {
+}
+
+message StickyMessageV1 {
+  string stickyAuthorPersonaId = 1;
+  string stickyAuthorDisplayName = 2;
   string timestamp = 3;
-  ChannelMessageType type = 4;
+  TextMessageV1 textMessage = 4;
+  string messageId = 5;
+  string stickyAuthorNickName = 6;
+  string stickyAuthorPlatformDisplayName = 7;
+  string stickyAuthorPlatformNickName = 8;
 }
 
-message TextMessage {
+message TextMessageV1 {
   string fromPersonaId = 1;
   string fromDisplayName = 2;
-  string text = 3;
-  string originalText = 4;
-  Player fromPlayer = 5;
-  string fromNickName = 6;
-  string fromPlatformDisplayName = 7;
-  string fromPlatformNickName = 8;
-  string metadata = 9;
-  com.ea.eadp.antelope.rtm.protocol.MessageType messageType = 10;
-  com.ea.eadp.antelope.rtm.protocol.StringId textMessageId = 11;
-  com.ea.eadp.antelope.rtm.protocol.MessageContext messageContext = 12;
-  repeated com.ea.eadp.antelope.rtm.protocol.ChatPropertyBagEntry chatPropertyBag = 13;
+  string timestamp = 3;
+  string text = 4;
+  string originalText = 5;
+  Player player = 6;
+  string fromNickName = 7;
+  string fromPlatformDisplayName = 8;
+  string fromPlatformNickName = 9;
+  string metadata = 10;
+  MessageType messageType = 11;
+  StringId textMessageId = 12;
+  MessageContext messageContext = 13;
+  repeated ChatPropertyBagEntry chatPropertyBag = 14;
 }
 
-message BinaryMessage {
-  string fromPersonaId = 1;
-  string fromDisplayName = 2;
-  bytes blob = 3;
-  Player fromPlayer = 4;
-  string fromNickName = 5;
-  string fromPlatformDisplayName = 6;
-  string fromPlatformNickName = 7;
-  string metadata = 8;
+message ChatPropertyBagEntry {
+  string key = 1;
+  ChatPropertyValue value = 2;
+}
+
+message ChatPropertyValue {
+  oneof value {
+    string stringValue = 1;
+    int64 integerValue = 2;
+    double floatValue = 3;
+    ChatPropertyTimestamp chatPropertyTimestampValue = 4;
+    ChatPropertyDuration chatPropertyDurationValue = 5;
+  }
+}
+
+message ChatPropertyTimestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
+message ChatPropertyDuration {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
+message MessageContext {
+  eadp.common.v1.PlayerNetworkId senderPlayerNetworkId = 1;
+  eadp.common.v1.DevicePlatformId senderDevicePlatformId = 2;
+  eadp.common.v1.ProductId senderProductId = 3;
+  eadp.common.v1.PlayerNetworkId receiverPlayerNetworkId = 4;
+  eadp.common.v1.DevicePlatformId receiverDevicePlatformId = 5;
+  ContentType contentType = 6;
+}
+
+message ContentType {
+  oneof body {
+    ContentTypeValue type = 1;
+    string customContentType = 2;
+  }
+}
+
+message LoginV3Response {
+  string sessionKey = 1;
+  repeated SessionV1 connectedSessions = 2;
+}
+
+message SessionV1 {
+  string sessionKey = 1;
+  PlatformV1 platform = 2;
+  string clientVersion = 3;
+  string timestamp = 4;
+}
+
+message SessionRequestV1 {
+}
+
+message SessionResponseV1 {
+  repeated SessionV1 connectedSessions = 1;
+}
+
+message SessionCleanupV1 {
+  string sessionKey = 1;
+}
+
+message StringId {
+  string id = 1;
 }

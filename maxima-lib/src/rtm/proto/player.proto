@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package com.ea.eadp.antelope.rtm.protocol;
+
+message Player {
+  string playerId = 1;
+  string productId = 2;
+}
+
+message PlayerInfo {
+  Player player = 1;
+  string displayName = 2;
+  string nickName = 3;
+}

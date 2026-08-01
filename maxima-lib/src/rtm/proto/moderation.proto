@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package com.ea.eadp.antelope.rtm.protocol;
+
+enum ModerationRoleType {
+  NO_MODERATION_ROLE = 0;
+  MODERATION_ROLE_VOLUNTEER = 1;
+  MODERATION_ROLE_EMPLOYEE = 2;
+}
+
+message GetRolesRequest {
+}
+
+message GetRolesResponse {
+  repeated ModerationRoleType roles = 1;
+}

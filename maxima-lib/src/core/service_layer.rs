@@ -533,6 +533,7 @@ service_layer_enum!(OwnershipMethod, {
     SteamSubscription,
     Epic,
     EpicVault,
+    // Might even have Amazon Luna as "Luna" but since i've never seen any request like it yet...
 });
 
 service_layer_enum!(OwnershipStatus, {

@@ -3,7 +3,7 @@ use log::error;
 use miniz_oxide::inflate::stream::InflateState;
 use std::{mem::size_of, ptr};
 
-const Z_MAGIC: u32 = u32::from_be_bytes(*b"ZSTB"); // new format, not zlib's internal layout
+const Z_MAGIC: u32 = u32::from_be_bytes(*b"ZSTB");
 
 /// Serialize an InflateState snapshot into a buffer,
 /// prefixed with a magic number and the length of the serialized data.

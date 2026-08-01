@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package com.ea.eadp.antelope.rtm.protocol;
+
+message ServerConfigRequestV1 {
+}
+
+message ServerConfigV1 {
+  RateLimitConfigV1 rateLimitConfig = 1;
+}
+
+message RateLimitConfigV1 {
+  double channelUpdateLimit = 1;
+  double typingEventLimit = 2;
+}

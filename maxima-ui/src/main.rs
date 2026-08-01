@@ -540,7 +540,7 @@ fn custom_window_frame(
     });
 
     // senpai ? could you draw all over my panel uwu
-    egui::CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
+    egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
         if !enabled {
             let warning_rect = Rect {
                 min: ui.max_rect().min,

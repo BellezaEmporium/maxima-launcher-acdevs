@@ -78,8 +78,8 @@ pub enum LSXConnectionError {
 const CORE_SENDER: &str = "EALS";
 
 const CHALLENGE_BUILD: &str = "release";
-//const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb"; // Need to figure out how to generate this
-const CHALLENGE_VERSION: &str = "10,5,64,37936";
+//const CHALLENGE_KEY: &str = "cacf897a20b6d612ad0c05e011df52bb";
+const CHALLENGE_VERSION: &str = "10,5,64,37936"; // is it Origin-related (this is the last version) or EA Desktop (would be way above, needs checkings)
 static LSX_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<LSX>.*?</LSX>").expect("LSX pattern regex should be valid"));
 

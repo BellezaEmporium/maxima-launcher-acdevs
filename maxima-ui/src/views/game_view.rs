@@ -292,26 +292,22 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                 }
 
                 if hero_vis_frac < 1.0
-                /* && hero.is_some() */
                 {
-                    // TODO: find a better solution
-                    let mut mesh = Mesh::default();
-
-                    let hero_tint = if ui.is_enabled() {
+                    let full_tint = if ui.is_enabled() {
                         Color32::from_black_alpha(20)
                     } else {
                         Color32::from_black_alpha(174)
                     };
-                    mesh.colored_vertex(
-                        hero_rect.left_bottom() - vec2(0.0, hero_rect.height() * hero_vis_frac),
-                        hero_tint,
-                    );
-                    mesh.colored_vertex(
-                        hero_rect.right_bottom() - vec2(0.0, hero_rect.height() * hero_vis_frac),
-                        hero_tint,
-                    );
-                    mesh.colored_vertex(hero_rect.right_top(), hero_tint);
-                    mesh.colored_vertex(hero_rect.left_top(), hero_tint);
+                    let fade_tint = Color32::from_black_alpha(0);
+
+                    let bottom_y = hero_rect.left_bottom() - vec2(0.0, hero_rect.height() * hero_vis_frac);
+
+                    let mut mesh = Mesh::default();
+                    // bottom edge fades to transparent — reads as the hero "dissolving"
+                    mesh.colored_vertex(bottom_y, fade_tint);
+                    mesh.colored_vertex(bottom_y + vec2(hero_rect.width(), 0.0), fade_tint);
+                    mesh.colored_vertex(hero_rect.right_top(), full_tint);
+                    mesh.colored_vertex(hero_rect.left_top(), full_tint);
                     mesh.add_triangle(0, 1, 2);
                     mesh.add_triangle(0, 2, 3);
                     ui.painter().add(Shape::mesh(mesh));

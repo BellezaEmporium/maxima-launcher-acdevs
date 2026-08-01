@@ -1,4 +1,5 @@
 syntax = "proto3";
+
 package com.ea.eadp.antelope.rtm.protocol;
 
 enum TypingEventType {
