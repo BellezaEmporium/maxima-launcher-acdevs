@@ -11,6 +11,9 @@ Maxima itself is a library (`maxima-lib`), with provided CLI (`maxima-cli`), TUI
 
 ![UI](images/UI.png)
 
+**Current developing stack:**
+Rust 1.90.1 | UI : egui / glow | Requests : reqwest | Async support & work : tokio | Windows layer : windows-sys | Linux layer : homemade | macOS layer : homemade and many under the hood plugins that make this program possible.
+
 **Features:**
  - EA Authentication
  - Downloading/Updating games
