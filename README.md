@@ -24,20 +24,21 @@ Maxima itself is a library (`maxima-lib`), with provided CLI (`maxima-cli`), TUI
  - Locating games (aka. game importing)
  - Running games under [proton](https://github.com/GloriousEggroll/proton-ge-custom) on Linux/SteamDeck
    - `proton-ge` is automatically installed together with [umu](https://github.com/Open-Wine-Components/umu-launcher).
-
-**In-Dev:**
- - macOS support
- - Support for launching Maxima through Epic/Steam
+  
+**Developer Roadmap:**
+ - macOS support (sjp761)
+ - Chat system
+ - Friend Adding/Removing/Inviting
+ - Support for launching Maxima through Epic/Steam (Link2EA protocol)
+ - Cleaner/Stabler downloader implementation
 
 **Planned:**
  - Library documentation/examples
  - Support for installing DLCs
  - Full EA Desktop interoperability. Games installed with EA Desktop already appear on Maxima, but to take it a step further we'd like the ability to, for example, start a download on EA Desktop and continue it on Maxima.
- - Cleaner/Stabler downloader implementation
  - Progressive/Selective installs
    - Some games are able to start without being fully installed, and some games contain language-specific files.
  - Support for the store (buying games)
- - Friend Adding/Removing/Inviting
  - Status setting; locked to "online" at the moment
  - Refactoring Maxima to new architecture allowing multiple frontends to co-exist
  
