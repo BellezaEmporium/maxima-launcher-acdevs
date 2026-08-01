@@ -86,7 +86,7 @@ message Player {
 message Channel {
   string channelId = 1;
   string channelName = 2;
-  ea.antelope.ChannelType type = 3;
+  antelope.rtm.ChannelType type = 3;
   bool crossGame = 4;
 }
 
@@ -95,19 +95,19 @@ message ChannelMessage {
     TextMessage textMessage = 5;
     BinaryMessage binaryMessage = 6;
     GroupMembershipChange membershipChange = 7;
-    ea.antelope.ChatConnectedV1 chatConnected = 8;
-    ea.antelope.ChatDisconnectedV1 chatDisconnected = 9;
-    ea.antelope.ChatLeftV1 chatLeft = 10;
-    ea.antelope.CustomMessage customMessage = 11;
-    ea.antelope.ChatUserMutedV1 chatUserMuted = 12;
-    ea.antelope.ChatUserUnmutedV1 chatUserUnmuted = 13;
-    ea.antelope.ChannelMembershipChangeV1 channelMembershipChange = 14;
-    ea.antelope.StickyMessageChangedV1 stickyMessageChanged = 15;
-    ea.antelope.ChatTypingEventV1 chatTypingEvent = 16;
-    ea.antelope.WorldChatMembershipChangeV1 worldChatMembershipChange = 17;
-    ea.antelope.GroupMemberAttributeChangeV1 groupMemberAttributeChange = 18;
-    ea.antelope.GroupAttributeChangeV1 groupAttributeChange = 19;
-    ea.antelope.GroupMemberRoleChangeV1 groupMemberRoleChange = 20;
+    antelope.rtm.ChatConnectedV1 chatConnected = 8;
+    antelope.rtm.ChatDisconnectedV1 chatDisconnected = 9;
+    antelope.rtm.ChatLeftV1 chatLeft = 10;
+    antelope.rtm.CustomMessage customMessage = 11;
+    antelope.rtm.ChatUserMutedV1 chatUserMuted = 12;
+    antelope.rtm.ChatUserUnmutedV1 chatUserUnmuted = 13;
+    antelope.rtm.ChannelMembershipChangeV1 channelMembershipChange = 14;
+    antelope.rtm.StickyMessageChangedV1 stickyMessageChanged = 15;
+    antelope.rtm.ChatTypingEventV1 chatTypingEvent = 16;
+    antelope.rtm.WorldChatMembershipChangeV1 worldChatMembershipChange = 17;
+    antelope.rtm.GroupMemberAttributeChangeV1 groupMemberAttributeChange = 18;
+    antelope.rtm.GroupAttributeChangeV1 groupAttributeChange = 19;
+    antelope.rtm.GroupMemberRoleChangeV1 groupMemberRoleChange = 20;
   }
   string messageId = 1;
   string channelId = 2;
@@ -125,10 +125,10 @@ message TextMessage {
   string fromPlatformDisplayName = 7;
   string fromPlatformNickName = 8;
   string metadata = 9;
-  ea.antelope.MessageType messageType = 10;
-  ea.antelope.StringId textMessageId = 11;
-  ea.antelope.MessageContext messageContext = 12;
-  repeated ea.antelope.ChatPropertyBagEntry chatPropertyBag = 13;
+  antelope.rtm.MessageType messageType = 10;
+  antelope.rtm.StringId textMessageId = 11;
+  antelope.rtm.MessageContext messageContext = 12;
+  repeated antelope.rtm.ChatPropertyBagEntry chatPropertyBag = 13;
 }
 
 message BinaryMessage {
@@ -168,7 +168,7 @@ message ChannelMuteList {
 
 message MutedUserV1 {
   string personaId = 1;
-  repeated ea.antelope.MutedByV1 mutedBy = 2;
+  repeated antelope.rtm.MutedByV1 mutedBy = 2;
   Player player = 3;
 }
 
@@ -184,12 +184,12 @@ message LogoutRequest {
 message PublishTextRequest {
   string channelId = 1;
   string text = 2;
-  ea.antelope.MessageType messageType = 3;
+  antelope.rtm.MessageType messageType = 3;
   int32 index = 4;
   string metadata = 5;
-  ea.antelope.StringId textMessageId = 6;
-  ea.antelope.MessageContext messageContext = 7;
-  repeated ea.antelope.ChatPropertyBagEntry chatProperties = 8;
+  antelope.rtm.StringId textMessageId = 6;
+  antelope.rtm.MessageContext messageContext = 7;
+  repeated antelope.rtm.ChatPropertyBagEntry chatProperties = 8;
 }
 
 message PublishBinaryRequest {
