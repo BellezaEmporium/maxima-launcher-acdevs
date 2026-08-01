@@ -115,7 +115,7 @@ pub fn eac_dir() -> Result<PathBuf, NativeError> {
 }
 
 pub fn script_path() -> Result<PathBuf, NativeError> {
-    match env::var("MAXIMA_WINE_SCRIPT") {
+    match env::var("MAXIMA_UMU_LOCATION") {
         Ok(path) => Ok(PathBuf::from(path)),
         Err(_) => Ok(maxima_dir()?.join("wine/umu/umu-run")),
     }
