@@ -1,13 +1,14 @@
 use clap::{Parser, Subcommand};
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use inquire::{Select, Text};
 use log::{debug, error, info, warn};
 use regex::Regex;
+use reqwest;
 
 use std::{
     path::PathBuf,
-    sync::{Arc, LazyLock},
+    sync::LazyLock,
     time::Instant,
 };
 
@@ -16,22 +17,18 @@ use is_elevated::is_elevated;
 
 #[cfg(windows)]
 use maxima::{
-    core::background_service::request_registry_setup,
+    core::background_service::{request_registry_setup, BACKGROUND_SERVICE_PORT, ServiceTouchupRequest},
     util::service::{is_service_running, is_service_valid, register_service_user, start_service},
 };
 
 use maxima::{
     content::{
-        ContentService,
-        downloader::ZipDownloader,
-        manager::{QueuedGame, QueuedGameBuilder},
+        ContentService, downloader::ZipDownloader, manager::QueuedGameBuilder,
     }, core::{
         LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder, auth::{
             TokenResponse, context::AuthContext, login::{begin_oauth_login_flow, manual_login}, nucleus_auth_exchange, nucleus_token_exchange,
-        }, clients::JUNO_PC_CLIENT_ID, cloudsync::CloudSyncLockMode, launch::{self, LaunchMode, LaunchOptions}, library::OwnedTitle, manifest::{self, MANIFEST_RELATIVE_PATH}, service_layer::{
-            SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
-            ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder,
-            ServiceLegacyOffer, ServicePlayer,
+        }, clients::JUNO_PC_CLIENT_ID, cloudsync::CloudSyncLockMode, launch::{self, LaunchMode, LaunchOptions}, library::OwnedTitle, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::{
+            SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS, ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder, ServiceLegacyOffer, ServicePlayer,
         },
     }, ooa, rtm::client::BasicPresence, util::{log::init_logger, native::take_foreground_focus, registry::check_registry_validity},
 };
@@ -108,18 +105,15 @@ struct Args {
     #[command(subcommand)]
     mode: Option<Mode>,
 
-    #[arg(long)]
-    #[clap(global = true)]
+    #[arg(long, global = true)]
     login: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
-    let result = startup().await;
-
-    if let Some(e) = result.err() {
+    if let Err(e) = startup().await {
         match std::env::var("RUST_BACKTRACE") {
-            Ok(_) => error!("{}:\n{}", e, e.backtrace().to_string()),
+            Ok(_) => error!("{}:\n{}", e, e.backtrace()),
             Err(_) => error!("{}: {}", e, e.root_cause()),
         }
     }
@@ -164,16 +158,12 @@ pub async fn login_flow(login_override: Option<String>) -> Result<TokenResponse>
     let mut auth_context = AuthContext::new()?;
 
     if let Some(access_token) = &login_override {
-        let access_token = if let Some(captures) = MANUAL_LOGIN_PATTERN.captures(&access_token) {
+        let access_token = if let Some(captures) = MANUAL_LOGIN_PATTERN.captures(access_token) {
             let persona = &captures[1];
             let password = &captures[2];
 
-            let login_result = manual_login(persona, password).await;
-            if login_result.is_err() {
-                bail!("Login failed: {}", login_result.err().unwrap().to_string());
-            }
-
-            login_result.unwrap()
+            let login_result = manual_login(persona, password).await?;
+            login_result
         } else {
             access_token.to_owned()
         };
@@ -193,12 +183,8 @@ pub async fn login_flow(login_override: Option<String>) -> Result<TokenResponse>
         info!("Received login...");
     }
 
-    let token_res = nucleus_token_exchange(&auth_context).await;
-    if token_res.is_err() {
-        bail!("Login failed: {}", token_res.err().unwrap().to_string());
-    }
-
-    Ok(token_res?)
+    let token_res = nucleus_token_exchange(&auth_context).await?;
+    Ok(token_res)
 }
 
 async fn startup() -> Result<()> {
@@ -271,17 +257,10 @@ async fn startup() -> Result<()> {
             let offer_id = if login.is_none() {
                 let mut maxima = maxima_arc.lock().await;
                 let offer = maxima.mut_library().game_by_base_slug(&slug).await;
-                // TODO: ideally this function should return an Error type, but this frontend makes that complicated
-                if let Err(err) = offer {
-                    bail!("Error fetching offer for slug `{}`: {}", slug, err);
-                } else {
-                    let offer = offer.unwrap();
-                    // TODO: could do a match here as well, same problem as above
-                    if offer.is_some() {
-                        offer.unwrap().offer_id().to_owned()
-                    } else {
-                        bail!("No owned offer found for '{}'", slug);
-                    }
+                match offer {
+                    Ok(Some(offer)) => offer.offer_id().to_owned(),
+                    Ok(None) => bail!("No owned offer found for '{}'", slug),
+                    Err(err) => bail!("Error fetching offer for slug `{}`: {}", slug, err),
                 }
             } else {
                 slug
@@ -352,7 +331,6 @@ async fn interactive_start_game(maxima_arc: LockedMaxima) -> Result<()> {
             if !game.base_offer().is_installed().await {
                 continue;
             }
-
             owned_games.push(game);
         }
 
@@ -380,7 +358,6 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
             if game.base_offer().is_installed().await {
                 continue;
             }
-
             owned_games.push(game);
         }
 
@@ -432,16 +409,16 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
         let mut maxima = maxima_arc.lock().await;
 
         for event in maxima.consume_pending_events() {
-            match event {
-                MaximaEvent::ReceivedLSXRequest(_pid, _request) => (),
-                _ => {}
-            }
+            let MaximaEvent::ReceivedLSXRequest(_, _) = event else {
+                continue;
+            };
+            debug!("Received LSX request event");
         }
 
         maxima.update().await;
 
         if let Some(downloader) = maxima.content_manager().current() {
-            info!("Downloading: {}%/100%", downloader.percentage_done());
+            info!("Downloading: {:.1}%/100%", downloader.percentage_done());
         } else {
             break;
         }
@@ -450,11 +427,9 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
-    let end_time = Instant::now();
-    let elapsed_time = end_time - start_time;
-
+    let elapsed_time = Instant::now() - start_time;
     info!(
-        "Download took {}.{}",
+        "Download took {}.{}s",
         elapsed_time.as_secs(),
         elapsed_time.subsec_millis()
     );
@@ -472,7 +447,7 @@ async fn download_specific_file(
 
     let content_service = ContentService::new(maxima.auth_storage().clone());
     let builds = content_service.available_builds(offer).await?;
-    let build = builds.build(build_id);
+    let build = builds.builds.iter().find(|b| b.build_id() == build_id);
     if build.is_none() {
         bail!("Couldn't find the game build {}", build_id);
     }
@@ -486,7 +461,7 @@ async fn download_specific_file(
 
     debug!("URL: {}", url.url());
 
-    let downloader = ZipDownloader::new("test-game", &url.url(), std::path::Path::new("C:/DownloadTest")).await?;
+    let downloader = ZipDownloader::new(url.url()).await?;
     let num_of_entries = downloader.manifest().entries().len();
     info!("Entries: {}", num_of_entries);
 
@@ -500,7 +475,8 @@ async fn download_specific_file(
     }
 
     let ele = entry.unwrap();
-    downloader.download_single_file(ele, None).await.unwrap();
+    let output_dir = std::env::current_dir()?.join("downloads");
+    downloader.download_single_file(ele, &output_dir).await?;
 
     info!(
         "Downloaded file {} from game build {}",
@@ -598,12 +574,7 @@ async fn juno_token_refresh(maxima_arc: LockedMaxima) -> Result<()> {
         bail!("Login failed!");
     }
 
-    let token_res = nucleus_token_exchange(&context).await;
-    if token_res.is_err() {
-        bail!("Login failed: {}", token_res.err().unwrap().to_string());
-    }
-
-    let token_res = token_res.unwrap();
+    let token_res = nucleus_token_exchange(&context).await?;
     info!("Access Token: {}", token_res.access_token());
     info!("Refresh Token: {:?}", token_res.refresh_token());
     info!("Token Type: {}", token_res.token_type());
@@ -650,19 +621,12 @@ async fn get_user_by_id(maxima_arc: LockedMaxima, user_id: &str) -> Result<()> {
         .await?;
 
     info!("Name: {}", player.display_name());
-
     dbg!(player);
     Ok(())
 }
 
-async fn get_game_by_slug(maxima_arc: LockedMaxima, slug: &str) -> Result<()> {
-    let maxima = maxima_arc.lock().await;
-
-    // match maxima.owned_game_by_slug(slug).await {
-    //     Ok(game) => info!("Game: {}", game.id()),
-    //     Err(err) => error!("{}", err),
-    // };
-
+async fn get_game_by_slug(_maxima_arc: LockedMaxima, _slug: &str) -> Result<()> {
+    // TODO: implement
     Ok(())
 }
 
@@ -687,17 +651,18 @@ async fn test_rtm_connection(maxima_arc: LockedMaxima) -> Result<()> {
 
         {
             let store = maxima.rtm().presence_store().lock().await;
-            for entry in store.iter() {
+            for (id, presence) in store.iter() {
+                let name = friends
+                    .iter()
+                    .find(|x| *x.id() == *id)
+                    .map(|f| f.display_name())
+                    .map_or("unknown", |v| v);
                 info!(
                     "{}/{} is {:?}: In {}",
-                    friends
-                        .iter()
-                        .find(|x| x.id().to_owned() == *entry.0)
-                        .unwrap()
-                        .display_name(),
-                    entry.0,
-                    entry.1.basic(),
-                    entry.1.status()
+                    name,
+                    id,
+                    presence.basic(),
+                    presence.status()
                 );
             }
         }
@@ -757,9 +722,18 @@ async fn list_games(maxima_arc: LockedMaxima) -> Result<()> {
     Ok(())
 }
 
-async fn locate_game(maxima_arc: LockedMaxima, path: &str) -> Result<()> {
+async fn locate_game(_maxima_arc: LockedMaxima, path: &str) -> Result<()> {
     let path = PathBuf::from(path);
     let manifest = manifest::read(path.join(MANIFEST_RELATIVE_PATH)).await?;
+    let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("http://127.0.0.1:{}/touchup", BACKGROUND_SERVICE_PORT))
+            .json(&ServiceTouchupRequest {
+                output_dir: path.to_string_lossy().into_owned(),
+            })
+            .send()
+            .await?;
+        info!("Installation finished!");
     manifest.run_touchup(&path).await?;
     info!("Installed!");
     Ok(())
@@ -837,7 +811,11 @@ async fn start_game(
 
         launch::start_game(
             maxima_arc.clone(),
-            LaunchMode::OnlineOffline(offer_id.to_owned(), persona.to_owned(), password.to_owned()),
+            LaunchMode::OnlineOffline(
+                offer_id.to_owned(),
+                persona.to_owned(),
+                password.to_owned(),
+            ),
             launch_options,
         )
         .await?;
@@ -847,10 +825,10 @@ async fn start_game(
         let mut maxima = maxima_arc.lock().await;
 
         for event in maxima.consume_pending_events() {
-            match event {
-                MaximaEvent::ReceivedLSXRequest(_pid, _request) => (),
-                _ => {}
-            }
+            let MaximaEvent::ReceivedLSXRequest(_, _) = event else {
+                continue;
+            };
+            debug!("Received LSX request event");
         }
 
         maxima.update().await;

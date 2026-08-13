@@ -13,6 +13,8 @@ pub enum ServerError {
     Native(#[from] maxima::util::native::NativeError),
     #[error(transparent)]
     Service(#[from] windows_service::Error),
+    #[error(transparent)]
+    Touchup(#[from] maxima::core::manifest::ManifestError),
 
     #[error("attempted to inject into invalid process")]
     InvalidInjectionTarget,

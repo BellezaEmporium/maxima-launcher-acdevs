@@ -8,7 +8,7 @@ use std::time::Duration;
 use actix_web::{get, post, web, HttpResponse, Responder};
 use log::{error, info};
 use maxima::core::background_service::{
-    ServiceLibraryInjectionRequest, BACKGROUND_SERVICE_PORT,
+    BACKGROUND_SERVICE_PORT, ServiceLibraryInjectionRequest, ServiceTouchupRequest,
 };
 use maxima::util::dll_injector::{DllInjector, InjectionError};
 use maxima::util::native::SafeParent;
@@ -284,6 +284,22 @@ async fn req_inject_library(body: web::Bytes) -> Result<HttpResponse, ServerErro
     Ok(HttpResponse::Ok().body("Injected"))
 }
 
+// Replaces the current touchup techniques using Maxima's service to leverage administrative privileges for file access.
+// sheesh + sheesh = omegasheesh
+#[post("/touchup")]
+async fn req_touchup(body: web::Bytes) -> Result<HttpResponse, ServerError> {
+    info!("Running touchup");
+
+    let request: ServiceTouchupRequest = serde_json::from_slice(&body)?;
+    let manifest = maxima::core::manifest::read(
+        Path::new(&request.output_dir).join(maxima::core::manifest::MANIFEST_RELATIVE_PATH),
+    )
+    .await?;
+    manifest.run_touchup(Path::new(&request.output_dir)).await?;
+
+    Ok(HttpResponse::Ok().body("Done"))
+}
+
 fn run_(_tx: std_mpsc::Sender<Event>, stop_rx: oneshot::Receiver<()>) {
     actix_web::rt::System::new().block_on(async move {
         use actix_web::{App, HttpServer};
@@ -292,6 +308,7 @@ fn run_(_tx: std_mpsc::Sender<Event>, stop_rx: oneshot::Receiver<()>) {
             App::new()
                 .service(req_set_up_registry)
                 .service(req_inject_library)
+                .service(req_touchup)
         })
         .bind(("127.0.0.1", BACKGROUND_SERVICE_PORT))
         {

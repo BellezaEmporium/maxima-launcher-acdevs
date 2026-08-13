@@ -1,5 +1,6 @@
 use egui::Context;
 use log::{error, info, warn};
+use thiserror::Error;
 
 use crate::{
     GameDetails, GameInfo, GameSettings,
@@ -111,7 +112,7 @@ pub struct BridgeThread {
     pub rtm_commander: UnboundedSender<MaximaEventRequest>,
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(Error, Debug)]
 pub enum BackendError {
     #[error(transparent)]
     Auth(#[from] AuthError),
@@ -147,6 +148,8 @@ pub enum BackendError {
     ServiceLayer(#[from] ServiceLayerError),
     #[error(transparent)]
     Token(#[from] TokenError),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 
     #[error("backend-frontend communication channel disconnected")]
     ChannelDisconnected,

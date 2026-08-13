@@ -16,6 +16,7 @@ log = { workspace = true }
 regex = { workspace = true }
 inquire = { workspace = true }
 futures = { workspace = true }
+reqwest = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }

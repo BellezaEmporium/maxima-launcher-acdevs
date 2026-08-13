@@ -16,6 +16,11 @@ pub struct ServiceLibraryInjectionRequest {
     pub path: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ServiceTouchupRequest {
+    pub output_dir: String,
+}
+
 pub async fn request_library_injection(
     pid: u32,
     path: &str,

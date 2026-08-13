@@ -1,11 +1,10 @@
 use bytebuffer::{ByteBuffer, Endian};
 use derive_getters::Getters;
-use encoding_rs::WINDOWS_1252;
+use encoding_rs::{WINDOWS_1252};
 use log::{debug, warn};
-use reqwest::Client;
 use reqwest::header::ToStrError;
+use reqwest::Client;
 use std::cmp;
-use std::path::{Component, Path};
 use std::string::FromUtf8Error;
 use thiserror::Error;
 
@@ -46,8 +45,6 @@ pub enum EntryError {
     Decode,
     #[error("invalid signature `{0:#10x}` (expected `{sig:#10x}`)", sig = ZIP_FILE_HEADER_SIGNATURE)]
     Signature(u32),
-    #[error("path traversal detected: {0}")]
-    PathTraversal(String),
 }
 
 #[derive(Error, Debug)]
@@ -96,19 +93,6 @@ fn signature_scan_rev(data: &[u8], signature: u32) -> Option<usize> {
     }
 
     None
-}
-
-fn validate_entry_name(name: &str) -> Result<(), EntryError> {
-    let p = Path::new(name);
-    if p.is_absolute() {
-        return Err(EntryError::PathTraversal(name.to_string()));
-    }
-    for component in p.components() {
-        if component == Component::ParentDir {
-            return Err(EntryError::PathTraversal(name.to_string()));
-        }
-    }
-    Ok(())
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
@@ -185,9 +169,8 @@ impl ZipFileEntry {
             if had_errors {
                 return Err(EntryError::Decode);
             }
-            s.to_string()
+            s.into_owned()
         };
-        validate_entry_name(&entry.name)?;
         entry.extra_field = data.read_bytes(extra_field_len as usize)?;
 
         if let Ok(data) = entry.extra_field(0x01) {
@@ -265,7 +248,7 @@ impl EndOfCentralDirectory {
         }
 
         let signature = data.read_u32()?;
-        if signature != ZIP_EOCD_SIGNATURE {
+        if signature as u32 != ZIP_EOCD_SIGNATURE {
             return Err(EOCDError::Signature(signature));
         }
 
@@ -301,12 +284,12 @@ impl EndOfCentralDirectory {
         data.read_u16()?;
         data.read_u16()?;
 
-        self.disk_number = data.read_u32()?;
-        self.disk_number_with_cd = data.read_u32()?;
+        self.disk_number = data.read_u32()? as u32;
+        self.disk_number_with_cd = data.read_u32()? as u32;
         self.disk_entries = data.read_i64()? as u64;
         self.total_entries = data.read_i64()? as u64;
         self.cd_size = data.read_i64()? as u64;
-        self.cd_offset = data.read_i64()?;
+        self.cd_offset = data.read_i64()? as i64;
         self.comment_length = 0;
 
         Ok(())
@@ -436,7 +419,7 @@ impl ZipFile {
                         idx: i,
                         total: eocd.total_entries,
                         err: format!("{:?}", err).to_string(),
-                    });
+                    })
                 }
                 Ok(e) => e,
             };

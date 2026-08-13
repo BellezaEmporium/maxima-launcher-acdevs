@@ -1,11 +1,12 @@
 use std::{
     path::PathBuf,
     sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     },
 };
 
+use anyhow::bail;
 use derive_builder::Builder;
 use derive_getters::Getters;
 use futures::StreamExt;
@@ -20,14 +21,12 @@ use crate::{
     content::{
         ContentService, downloader::{DownloadError, ZipDownloader}, zip::{CompressionType, ZipError, ZipFileEntry},
     }, core::{
-        MaximaEvent,
-        auth::storage::LockedAuthStorage,
-        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
-        service_layer::ServiceLayerError,
+        MaximaEvent, auth::storage::LockedAuthStorage, background_service::{BACKGROUND_SERVICE_PORT, ServiceTouchupRequest}, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::ServiceLayerError,
     }, util::native::{NativeError, maxima_dir},
 };
 
 const QUEUE_FILE: &str = "download_queue.json";
+const MAX_CONCURRENT_DOWNLOADS: usize = 16;
 
 #[derive(Default, Builder, Getters, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QueuedGame {
@@ -40,7 +39,6 @@ pub struct QueuedGame {
 pub struct DownloadQueue {
     current: Option<QueuedGame>,
     paused: bool,
-
     queued: Vec<QueuedGame>,
     completed: Vec<QueuedGame>,
 }
@@ -58,8 +56,6 @@ pub enum ContentManagerError {
 
     #[error("download in progress, you must cancel it before starting a new one")]
     DownloadInProgress,
-    #[error("offer `{0}` is not in the download queue")]
-    NotInQueue(String),
 }
 
 #[derive(Error, Debug)]
@@ -87,53 +83,65 @@ pub enum DownloaderError {
     EntrySize { requested: u64, entry: usize },
     #[error("unsupported compression type `{0:?}`")]
     CompressionType(CompressionType),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 impl DownloadQueue {
-    pub(crate) async fn load() -> Result<DownloadQueue, ContentManagerError> {
+    pub(crate) async fn load() -> Result<Self, ContentManagerError> {
         let file = maxima_dir()?.join(QUEUE_FILE);
         if !file.exists() {
             return Ok(Self::default());
         }
 
-        let data = fs::read_to_string(file).await?;
-        let result = serde_json::from_str(&data);
-        if result.is_err() {
-            return Ok(Self::default());
+        let data = fs::read_to_string(&file).await?;
+        match serde_json::from_str(&data) {
+            Ok(queue) => Ok(queue),
+            Err(err) => {
+                // Keep the corrupt file for inspection instead of silently discarding it
+                let backup = file.with_extension("json.bak");
+                error!("Corrupt download queue, backing up to {}: {err}", backup.display());
+                let _ = fs::rename(&file, &backup).await;
+                Ok(Self::default())
+            }
         }
-
-        Ok(result?)
     }
 
     pub(crate) async fn save(&self) -> Result<(), ContentManagerError> {
         let file = maxima_dir()?.join(QUEUE_FILE);
-        fs::write(file, serde_json::to_string(&self)?).await?;
+        fs::write(file, serde_json::to_string(self)?).await?;
         Ok(())
     }
 
     pub fn push_to_current(&mut self, game: QueuedGame) {
-        if let Some(current) = &self.current {
-            self.queued.push(current.clone());
+        if let Some(current) = self.current.take() {
+            self.queued.push(current);
         }
+        self.current = Some(game);
+    }
 
-        self.current = Some(game.clone());
+    /// FIFO: take the oldest queued game.
+    fn pop_next(&mut self) -> Option<QueuedGame> {
+        if self.queued.is_empty() {
+            None
+        } else {
+            Some(self.queued.remove(0))
+        }
     }
 }
 
+type ProgressCallback = Box<dyn Fn(usize) + Send>;
+
 pub struct GameDownloader {
     offer_id: String,
-
     downloader: Arc<ZipDownloader>,
     entries: Vec<ZipFileEntry>,
-
+    output_dir: PathBuf,
     cancel_token: CancellationToken,
     completed_bytes: Arc<AtomicUsize>,
     total_count: usize,
     total_bytes: usize,
     notify: Arc<Notify>,
-    error: Arc<std::sync::Mutex<Option<DownloaderError>>>,
-    finished: Arc<std::sync::atomic::AtomicBool>,
-    paused: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl GameDownloader {
@@ -147,60 +155,48 @@ impl GameDownloader {
 
         debug!("URL: {}", url.url());
 
-        let downloader = ZipDownloader::new(&game.offer_id, url.url(), &game.path).await?;
-
-        let mut entries = Vec::new();
-        for ele in downloader.manifest().entries() {
-            // TODO: Filtering
-            entries.push(ele.clone());
-        }
+        let downloader = ZipDownloader::new(url.url()).await?;
+        let entries = downloader.manifest().entries().to_vec();
 
         let total_count = entries.len();
         let total_bytes = entries
             .iter()
             .map(|x| *x.compressed_size() as usize)
-            .sum::<usize>(); // mmmph a good amount of bytes, eat that Beton Brutal
+            .sum::<usize>()
+            + 1; // +1 accounts for the touchup step at the end
 
         Ok(GameDownloader {
             offer_id: game.offer_id.to_owned(),
-
             downloader: Arc::new(downloader),
             entries,
+            output_dir: game.path.clone(),
             cancel_token: CancellationToken::new(),
             completed_bytes: Arc::new(AtomicUsize::new(0)),
             total_count,
             total_bytes,
             notify: Arc::new(Notify::new()),
-            error: Arc::new(std::sync::Mutex::new(None)),
-            paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            finished: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
     pub fn download(&self) {
-        let (downloader_arc, entries, cancel_token, completed_bytes, notify, error) =
+        let (downloader_arc, entries, cancel_token, completed_bytes, notify, output_dir) =
             self.prepare_download_vars();
-        let total_count = self.total_count;
-        let finished = self.finished.clone();
+        let notify_done = notify.clone();
 
         tokio::spawn(async move {
-            let result = GameDownloader::start_downloads(
-                total_count,
+            let dl = GameDownloader::start_downloads(
                 downloader_arc,
                 entries,
                 cancel_token,
                 completed_bytes,
-                finished.clone(),
+                notify,
+                output_dir,
             )
             .await;
-
-            if let Err(err) = result {
-                error!("Error when downloading!: `{:?}`", err);
-                *error.lock().unwrap() = Some(err);
+            if let Err(err) = dl {
+                error!("Error when downloading!: `{err:?}`");
             }
-
-            finished.fetch_or(true, Ordering::SeqCst);
-            notify.notify_one();
+            notify_done.notify_one();
         });
     }
 
@@ -212,7 +208,7 @@ impl GameDownloader {
         CancellationToken,
         Arc<AtomicUsize>,
         Arc<Notify>,
-        Arc<std::sync::Mutex<Option<DownloaderError>>>,
+        PathBuf,
     ) {
         (
             self.downloader.clone(),
@@ -220,54 +216,78 @@ impl GameDownloader {
             self.cancel_token.clone(),
             self.completed_bytes.clone(),
             self.notify.clone(),
-            self.error.clone(),
+            self.output_dir.clone(),
         )
     }
 
     async fn start_downloads(
-        total_count: usize,
         downloader_arc: Arc<ZipDownloader>,
         entries: Vec<ZipFileEntry>,
         cancel_token: CancellationToken,
         completed_bytes: Arc<AtomicUsize>,
-        finished: Arc<std::sync::atomic::AtomicBool>,
+        notify: Arc<Notify>,
+        output_dir: PathBuf,
     ) -> Result<(), DownloaderError> {
-        let mut handles = Vec::with_capacity(total_count);
+        let mut handles = Vec::with_capacity(entries.len());
 
-        for ele in entries.iter().take(total_count) {
+        for ele in entries {
             let downloader = downloader_arc.clone();
-            let ele = ele.clone();
+            let output_dir = output_dir.clone();
             let cancel_token = cancel_token.clone();
             let completed_bytes = completed_bytes.clone();
+
             handles.push(async move {
+                if ele.name().contains("Cleanup") {
+                    info!("Ele: {:?}", ele);
+                }
+
+                let on_progress: ProgressCallback = Box::new(move |bytes| {
+                    completed_bytes.fetch_add(bytes, Ordering::SeqCst);
+                });
+
                 tokio::select! {
-                    result = downloader.download_single_file(&ele, Some(Arc::new(move |bytes| {
-                        completed_bytes.fetch_add(bytes, Ordering::SeqCst);
-                    }))) => result.map(|_| ()).map_err(DownloaderError::from),
+                    result = downloader.download_single_file(&ele, &output_dir) => {
+                        if let Err(err) = result {
+                            error!("File download failed: {}", err);
+                        }
+                    },
                     _ = cancel_token.cancelled() => {
                         info!("Download of {} cancelled", ele.name());
-                        Ok(())
                     },
                 }
             });
         }
 
-        let results: Vec<Result<(), DownloaderError>> = futures::stream::iter(handles)
-            .buffer_unordered(16)
-            .collect()
+        let _results = futures::stream::iter(handles)
+            .buffer_unordered(MAX_CONCURRENT_DOWNLOADS)
+            .collect::<Vec<()>>()
             .await;
 
-        for result in results {
-            result?;
+        // If we were cancelled mid-flight, don't run touchup or report completion
+        if cancel_token.is_cancelled() {
+            info!("Download cancelled, skipping touchup");
+            notify.notify_one();
+            return Ok(());
         }
 
-        let path = downloader_arc.path();
         info!("Files downloaded, running touchup...");
-        let manifest = manifest::read(path.join(MANIFEST_RELATIVE_PATH)).await?;
-        manifest.run_touchup(path).await?;
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("http://127.0.0.1:{}/touchup", BACKGROUND_SERVICE_PORT))
+            .json(&ServiceTouchupRequest {
+                output_dir: output_dir.to_string_lossy().into_owned(),
+            })
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(DownloaderError::Other(anyhow::anyhow!("Touchup request failed: {}", text)));
+        }
         info!("Installation finished!");
 
-        let _ = finished;
+        completed_bytes.fetch_add(1, Ordering::SeqCst);
+        notify.notify_one();
         Ok(())
     }
 
@@ -297,16 +317,8 @@ impl GameDownloader {
         self.total_bytes
     }
 
-    pub fn offer_id(&self) -> &String {
+    pub fn offer_id(&self) -> &str {
         &self.offer_id
-    }
-
-    pub fn take_error(&self) -> Option<DownloaderError> {
-        self.error.lock().unwrap().take()
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self.finished.load(Ordering::SeqCst)
     }
 }
 
@@ -333,7 +345,6 @@ impl ContentManager {
             self.queue.queued.push(game);
             self.queue.save().await?;
         }
-
         Ok(())
     }
 
@@ -348,7 +359,6 @@ impl ContentManager {
                 self.install_direct(game).await?;
                 return Ok(());
             }
-
             self.queue.queued.push(current.clone());
         }
 
@@ -356,12 +366,12 @@ impl ContentManager {
         Ok(())
     }
 
+    // Starts installation of a game immediately, without checking the queue. If another
+    // download is in progress, it will be cancelled.
     async fn install_direct(&mut self, game: QueuedGame) -> Result<(), ContentManagerError> {
         if self.current.is_some() {
             return Err(ContentManagerError::DownloadInProgress);
         }
-
-        self.queue.queued.retain(|g| g.offer_id != game.offer_id);
 
         self.queue.current = Some(game.clone());
         self.queue.save().await?;
@@ -372,96 +382,108 @@ impl ContentManager {
         Ok(())
     }
 
+    // Cancels the current download and removes the game from the queue, if present.
     pub async fn cancel_install(&mut self, offer_id: &str) -> Result<(), ContentManagerError> {
+        // Stop the in-flight download first so nothing keeps writing to disk.
         if let Some(current) = &self.current {
             if current.offer_id() == offer_id {
                 current.cancel();
+                current.wait().await; // let the task settle before mutating state
                 self.current = None;
-                self.queue.current = None;
-                self.queue.save().await?;
-                return Ok(());
             }
         }
 
-        if let Some(pos) = self
+        if self
             .queue
-            .queued
-            .iter()
-            .position(|g| g.offer_id == offer_id)
+            .current
+            .as_ref()
+            .is_some_and(|g| g.offer_id() == offer_id)
         {
-            self.queue.queued.remove(pos);
-            self.queue.save().await?;
-            return Ok(());
+            self.queue.current = None;
         }
 
-        Err(ContentManagerError::NotInQueue(offer_id.to_owned()))
+        self.queue.queued.retain(|g| g.offer_id() != offer_id);
+        self.queue.completed.retain(|g| g.offer_id() != offer_id);
+        self.queue.paused = false;
+
+        self.queue.save().await?;
+        Ok(())
     }
 
+    /// Pauses the active download. Partial files and saved zlib states stay
+    /// on disk, so it can be resumed later via `install_now` with the same game.
     pub async fn pause_install(&mut self, offer_id: &str) -> Result<(), ContentManagerError> {
         if let Some(current) = &self.current {
             if current.offer_id() == offer_id {
                 current.cancel();
+                current.wait().await;
                 self.current = None;
-
-                let game = self
-                    .queue
-                    .current
-                    .take()
-                    .ok_or_else(|| ContentManagerError::NotInQueue(offer_id.to_owned()))?;
-
-                self.queue.queued.insert(0, game);
+                self.queue.paused = true;
                 self.queue.save().await?;
-                return Ok(());
             }
         }
-
-        Err(ContentManagerError::NotInQueue(offer_id.to_owned()))
+        // If it's only queued (not downloading yet), there's nothing to pause.
+        Ok(())
     }
 
+    /// Moves a queued install to the front, pausing whatever is currently
+    /// downloading and starting the requested game immediately.
     pub async fn move_install_to_top(&mut self, offer_id: &str) -> Result<(), ContentManagerError> {
-        let pos = self
+        if self
             .queue
-            .queued
-            .iter()
-            .position(|g| g.offer_id == offer_id);
-        if let Some(pos) = pos {
-            let game = self.queue.queued.remove(pos);
-            self.queue.queued.insert(0, game);
-            self.queue.save().await?;
-            return Ok(());
+            .current
+            .as_ref()
+            .is_some_and(|g| g.offer_id() == offer_id)
+        {
+            return Ok(()); // already at the top
         }
 
-        Err(ContentManagerError::NotInQueue(offer_id.to_owned()))
+        let Some(index) = self.queue.queued.iter().position(|g| g.offer_id() == offer_id)
+        else {
+            return Ok(()); // not in the queue at all
+        };
+
+        let game = self.queue.queued.remove(index);
+
+        // Pause the current download and requeue it at the front.
+        if let Some(current) = self.current.take() {
+            current.cancel();
+            current.wait().await;
+        }
+        if let Some(current) = self.queue.current.take() {
+            self.queue.queued.insert(0, current);
+        }
+
+        self.install_direct(game).await
     }
 
     pub(crate) async fn update(&mut self) -> Result<Option<MaximaEvent>, ContentManagerError> {
-        if self.current.is_none() && self.queue.current.is_none() && !self.queue.queued.is_empty() {
-            let game = self.queue.queued.remove(0);
-            self.install_direct(game).await?;
-        }
-
         let mut event = None;
 
         if let Some(current) = &self.current {
-            if let Some(err) = current.take_error() {
-                let offer_id = current.offer_id().to_owned();
+            if current.is_done() {
+                let finished = self
+                    .queue
+                    .current
+                    .take()
+                    .expect("queue.current out of sync with active download");
+                self.queue.completed.push(finished);
+                event = Some(MaximaEvent::InstallFinished(current.offer_id.to_owned()));
                 self.current = None;
-                self.queue.current = None;
-                if !self.queue.queued.is_empty() {
-                    let game = self.queue.queued.remove(0);
-                    self.install_now(game).await?;
-                }
+                self.queue.paused = false; // Reset pause flag when done
                 self.queue.save().await?;
-                event = Some(MaximaEvent::InstallFailed(offer_id, err.to_string()));
-            } else if current.is_finished() {
-                event = Some(MaximaEvent::InstallFinished(current.offer_id().to_owned()));
-                self.current = None;
-                self.queue.current = None;
-                if !self.queue.queued.is_empty() {
-                    let game = self.queue.queued.remove(0);
-                    self.install_now(game).await?;
-                }
-                self.queue.save().await?;
+            }
+        }
+
+        if self.current.is_none() && !self.queue.paused {
+            if let Some(game) = self.queue.pop_next() {
+                self.install_direct(game).await?;
+            }
+        }
+
+        if self.current.is_none() && self.queue.current.is_some() && !self.queue.paused {
+            if let Some(game) = self.queue.current.take() {
+                self.install_direct(game).await?;
             }
         }
 

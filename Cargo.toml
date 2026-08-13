@@ -36,6 +36,10 @@ winreg = "0.56.0"
 windows-service = "0.8.1"
 is_elevated = "0.1.2"
 
+[patch.crates-io]
+async-compression = { git = "https://github.com/sjp761/async-compression.git", rev = "a226c72f754f942ad187cc65cb1f03df5ae26b7b", version = "0.4.42" }
+flate2 = { git = "https://github.com/sjp761/flate2-rs.git", rev = "45fc9f6a56a97513b285029fee14213a2d0fe2e5", version = "1.1.10" }
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

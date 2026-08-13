@@ -1,13 +1,9 @@
 use std::time::Duration;
+use anyhow::Result;
 
 use crate::core::{
-    auth::storage::LockedAuthStorage,
-    cache::DynamicCache,
-    service_layer::{
-        SERVICE_REQUEST_AVAILABLEBUILDS, SERVICE_REQUEST_DOWNLOADURL, ServiceAvailableBuild,
-        ServiceAvailableBuilds, ServiceAvailableBuildsBuilder,
-        ServiceAvailableBuildsRequestBuilder, ServiceDownloadUrlMetadata,
-        ServiceDownloadUrlRequestBuilder, ServiceLayerClient, ServiceLayerError,
+    auth::storage::LockedAuthStorage, cache::DynamicCache, service_layer::{
+        SERVICE_REQUEST_AVAILABLEBUILDS, SERVICE_REQUEST_DOWNLOADURL, ServiceAvailableBuild, ServiceAvailableBuildsBuilder, ServiceAvailableBuildsRequestBuilder, ServiceDownloadType, ServiceDownloadUrlMetadata, ServiceDownloadUrlRequestBuilder, ServiceLayerClient, ServiceLayerError,
     },
 };
 
@@ -15,6 +11,22 @@ pub mod downloader;
 pub mod manager;
 pub mod zip;
 pub mod zlib;
+
+#[derive(Clone)]
+pub struct ServiceAvailableBuilds {
+    pub builds: Vec<ServiceAvailableBuild>,
+}
+
+impl ServiceAvailableBuilds {
+    pub fn live_build(&self) -> Option<&ServiceAvailableBuild> {
+        self.builds.iter().find(|b| {
+            b.download_type()
+                .as_ref()
+                .unwrap_or(&ServiceDownloadType::None)
+                == &ServiceDownloadType::Live
+        })
+    }
+}
 
 pub struct ContentService {
     service_layer: ServiceLayerClient,
@@ -37,7 +49,7 @@ impl ContentService {
 
     pub async fn available_builds(
         &self,
-        offer_id: &str,
+        offer_id: &str
     ) -> Result<ServiceAvailableBuilds, ServiceLayerError> {
         let cache_key = "builds_".to_owned() + offer_id;
         if let Some(cached) = self.request_cache.get(&cache_key) {
@@ -54,9 +66,7 @@ impl ContentService {
             )
             .await?;
 
-        let builds = ServiceAvailableBuildsBuilder::default()
-            .builds(builds)
-            .build()?;
+        let builds = ServiceAvailableBuilds { builds };
         self.request_cache.insert(cache_key, builds.clone());
         Ok(builds)
     }
