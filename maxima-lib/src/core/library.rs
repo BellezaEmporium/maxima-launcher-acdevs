@@ -161,7 +161,7 @@ impl OwnedOffer {
         if !path.exists() {
             return Ok(None);
         }
-        Ok(Some(manifest::read(path).await?))
+        Ok(Some(manifest::load_manifest_from_disk(path).await?))
     }
 
     pub fn offer_id(&self) -> &String {

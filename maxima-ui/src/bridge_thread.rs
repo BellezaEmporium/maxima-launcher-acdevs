@@ -1,3 +1,7 @@
+use maxima::core::manifest::handle_touchup_request;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedReceiver;
 use egui::{Context, Key::W};
 use log::{error, info, warn};
 use thiserror::Error;
@@ -512,27 +516,13 @@ impl BridgeThread {
                             path.pop();
                         }
 
-                        let path = PathBuf::from(path);
+                         let path = PathBuf::from(path);
                         let manifest_path = path.join(MANIFEST_RELATIVE_PATH);
-
-                        let response = match manifest::read(manifest_path.clone()).await {
+                        let response = match manifest::load_manifest_from_disk(manifest_path.clone()).await {
                             Ok(manifest) => {
-                                let should_force_touchup = match tokio::fs::read_to_string(&manifest_path).await {
-                                    Ok(xml) => {
-                                        xml.contains("forceTouchupInstallerAfterUpdate=\"true\"")
-                                            || xml.contains("<forceTouchupInstallerAfterUpdate>true</forceTouchupInstallerAfterUpdate>")
-                                    }
-                                    Err(err) => {
-                                        warn!(
-                                            "Failed to inspect forceTouchupInstallerAfterUpdate during locate ({}), skipping touchup",
-                                            err
-                                        );
-                                        false
-                                    }
-                                };
-
+                                let should_force_touchup = manifest.needs_touchup_on_locate();
                                 if should_force_touchup {
-                                    match manifest.run_touchup(&path, &slug).await {
+                                    match handle_touchup_request(&path, &slug).await {
                                         Ok(()) => InteractThreadLocateGameResponse::Success,
                                         Err(err) => {
                                             warn!("Touchup failed during locate, treating as success: {}", err);

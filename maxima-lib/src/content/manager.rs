@@ -1,4 +1,4 @@
-use crate::content::exclusion::get_exclusion_list;
+use crate::{content::exclusion::get_exclusion_list, core::manifest::handle_touchup_request};
 use std::{
     path::PathBuf,
     sync::{
@@ -22,7 +22,6 @@ use crate::{
     content::{
         ContentService,
         downloader::{DownloadError, ZipDownloader},
-        exclusion::get_exclusion_list,
         zip::{CompressionType, ZipError, ZipFileEntry},
     },
     core::{
@@ -174,7 +173,7 @@ impl GameDownloader {
         debug!("URL: {}", url.url());
 
         let downloader = ZipDownloader::new(url.url()).await?;
-        let exclusion_list = get_exclusion_list(game.offer_id.clone());
+        let exclusion_list = get_exclusion_list(&game.slug());
         let mut entries = Vec::new();
         for ele in downloader.manifest().entries() 
         {
@@ -307,24 +306,10 @@ impl GameDownloader {
             return Ok(());
         }
 
-        #[cfg(unix)]
-        mx_linux_setup(Some(&slug)).await?; // Wine Prefix needs setup before touchup
-        info!("Files downloaded, running touchup...");
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(format!("http://127.0.0.1:{}/touchup", BACKGROUND_SERVICE_PORT))
-            .json(&ServiceTouchupRequest {
-                output_dir: output_dir.to_string_lossy().into_owned(),
-            })
-            .send()
-            .await?;
+        handle_touchup_request(&output_dir, &slug).await?; // output dir is install path
 
-        if !resp.status().is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(DownloaderError::Other(anyhow::anyhow!("Touchup request failed: {}", text)));
-        }
         info!("Installation finished!");
-
+        game_install_info.save_to_json(&slug);
         completed_bytes.fetch_add(1, Ordering::SeqCst);
         notify.notify_one();
         Ok(())

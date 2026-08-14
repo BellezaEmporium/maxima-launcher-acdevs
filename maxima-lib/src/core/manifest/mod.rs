@@ -12,6 +12,8 @@ pub enum ManifestError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
+    ServiceRun(#[from] reqwest::Error),
+    #[error(transparent)]
     Xml(#[from] DeError),
     #[error(transparent)]
     Native(#[from] crate::util::native::NativeError),
@@ -103,8 +105,8 @@ pub fn from_bytes<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, Man
     Ok(quick_xml::de::from_str(&string)?)
 }
 
-pub async fn read(path: PathBuf) -> Result<Box<dyn GameManifest>, ManifestError> {
-    let bytes = tokio::fs::read(&path).await?;
+pub async fn load_manifest_from_disk(path_to_xml: PathBuf) -> Result<Box<dyn GameManifest>, ManifestError> {
+    let bytes = tokio::fs::read(&path_to_xml).await?;
 
     if let Ok(m) = from_bytes::<DiPManifest>(&bytes) {
         return Ok(Box::new(m));
@@ -117,4 +119,29 @@ pub async fn read(path: PathBuf) -> Result<Box<dyn GameManifest>, ManifestError>
             pre_dip_attempt: Box::new(pre_dip_err),
         }),
     }
+}
+
+// 2 different thing for windows and unix as only windows needs elevation, 
+
+#[cfg(windows)]
+pub async fn handle_touchup_request(install_path: &Path, slug: &str) -> Result<(), ManifestError> {
+    use crate::core::background_service::{BACKGROUND_SERVICE_PORT, ServiceTouchupRequest};
+
+    let client = reqwest::Client::new();
+    let _ = client
+        .post(format!("http://127.0.0.1:{}/touchup", BACKGROUND_SERVICE_PORT))
+        .json(&ServiceTouchupRequest {
+            output_dir: install_path.to_string_lossy().into_owned(),
+            slug: slug.to_string(),
+        })
+        .send()
+        .await?;
+    Ok(())
+}
+
+
+#[cfg(unix)]
+pub async fn handle_touchup_request(install_path: &Path, slug: &str) -> Result<(), ManifestError> {
+    let manifest = load_manifest_from_disk(Path::new(install_path).join(MANIFEST_RELATIVE_PATH)).await.unwrap();
+    manifest.run_touchup(Path::new(install_path), slug).await
 }

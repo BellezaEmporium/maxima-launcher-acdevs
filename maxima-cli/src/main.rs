@@ -1,3 +1,4 @@
+use maxima::core::{manifest::handle_touchup_request};
 use clap::{Parser, Subcommand};
 
 use anyhow::{bail, Result};
@@ -17,7 +18,7 @@ use is_elevated::is_elevated;
 
 #[cfg(windows)]
 use maxima::{
-    core::background_service::{request_registry_setup, BACKGROUND_SERVICE_PORT, ServiceTouchupRequest},
+    core::background_service::{request_registry_setup},
     util::service::{is_service_running, is_service_valid, register_service_user, start_service},
 };
 
@@ -30,10 +31,7 @@ use maxima::{
         }, clients::JUNO_PC_CLIENT_ID, cloudsync::CloudSyncLockMode, launch::{self, LaunchMode, LaunchOptions}, library::OwnedTitle, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::{
             SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS, ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder, ServiceLegacyOffer, ServicePlayer,
         },
-    },
-    ooa,
-    rtm::client::BasicPresence,
-    util::{
+    }, ooa, rtm::client::BasicPresence, util::{
         log::init_logger,
         native::{maxima_dir, take_foreground_focus},
         registry::check_registry_validity,
@@ -760,19 +758,9 @@ async fn list_games(maxima_arc: LockedMaxima) -> Result<()> {
     Ok(())
 }
 
-async fn locate_game(_maxima_arc: LockedMaxima, path: &str) -> Result<()> {
-    let path = PathBuf::from(path);
-    let manifest = manifest::read(path.join(MANIFEST_RELATIVE_PATH)).await?;
-    let client = reqwest::Client::new();
-        let resp = client
-            .post(format!("http://127.0.0.1:{}/touchup", BACKGROUND_SERVICE_PORT))
-            .json(&ServiceTouchupRequest {
-                output_dir: path.to_string_lossy().into_owned(),
-            })
-            .send()
-            .await?;
-        info!("Installation finished!");
-    manifest.run_touchup(&path).await?;
+async fn locate_game(_maxima_arc: LockedMaxima, install_path: &str, slug: &str) -> Result<()> {
+    let path: PathBuf = PathBuf::from(install_path);
+    handle_touchup_request(&path, slug).await?;
     info!("Installed!");
     Ok(())
 }
