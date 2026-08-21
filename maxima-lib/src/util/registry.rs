@@ -205,7 +205,23 @@ async fn read_reg_key(path: &str, _slug: Option<&str>) -> Result<Option<String>,
     Ok(None)
 }
 
-#[cfg(windows)] // This is only used for checking if a game is installed on windows. Just keep it out of the way on unix
+pub async fn parse_registry_path_json(
+    key: &str,
+    slug: Option<&str>,
+) -> Result<PathBuf, RegistryError> {
+    let game_install_info =
+        load_game_info_from_json(slug.unwrap()).map_err(|_| RegistryError::InvalidInstallKey)?;
+    let idx = key.rfind(']');
+    // Path looks like [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe (note this could be something other than the exe like the manifest)
+    // Extract everything after the last ] and append it to the install path
+    let after_bracket = &key[(idx.unwrap() + 1)..];
+    let path = game_install_info.path().join(after_bracket);
+    #[cfg(unix)]
+    let path = case_insensitive_path(path);
+    Ok(path)
+}
+
+#[cfg(windows)]
 pub async fn parse_registry_path_regkey(key: &str) -> Result<PathBuf, RegistryError> {
     let mut parts = key
         .split(|c| c == '[' || c == ']')
@@ -230,33 +246,16 @@ pub async fn parse_registry_path_regkey(key: &str) -> Result<PathBuf, RegistryEr
     Ok(path)
 }
 
-pub async fn parse_registry_path_json(
-    key: &str,
-    slug: Option<&str>,
-) -> Result<PathBuf, RegistryError> {
-    let game_install_info =
-        load_game_info_from_json(slug.unwrap()).map_err(|_| RegistryError::InvalidInstallKey)?;
-    let idx = key.rfind(']');
-    // Path looks like [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe (note this could be something other than the exe like the manifest)
-    // Extract everything after the last ] and append it to the install path
-    let after_bracket = &key[(idx.unwrap() + 1)..];
-    let path = game_install_info.path().join(after_bracket);
-    #[cfg(unix)]
-    let path = case_insensitive_path(path);
-    Ok(path)
-}
-
-#[cfg(false)] // Block out unused method
-pub async fn parse_partial_registry_path(
-    key: &str,
-    slug: Option<&str>,
-) -> Result<PathBuf, RegistryError> {
+// [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe 
+// Will replace the registry key with the install dir and will only return that (IE will drop everything after the last ])
+#[cfg(windows)]
+pub async fn parse_partial_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
     let mut parts = key
         .split(|c: char| c == '[' || c == ']')
         .filter(|s| !s.is_empty());
 
     let path = if let (Some(first), Some(_second)) = (parts.next(), parts.next()) {
-        let path = match read_reg_key(first, slug).await? {
+        let path = match read_reg_key(first, None).await? {
             Some(path) => path.replace("\\", "/"),
             None => return Ok(PathBuf::from(key.to_owned())),
         };
@@ -266,8 +265,6 @@ pub async fn parse_partial_registry_path(
         PathBuf::from(key.to_owned())
     };
 
-    #[cfg(unix)]
-    let path = case_insensitive_path(path);
     Ok(path)
 }
 

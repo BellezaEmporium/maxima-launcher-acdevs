@@ -60,19 +60,18 @@ pub struct OwnedOffer {
 impl OwnedOffer {
     #[cfg(windows)]
     pub async fn check_install_win_registry(&self) -> bool {
-        use crate::util::registry::parse_registry_path_regkey;
+        use crate::util::registry::{parse_partial_registry_path};
 
         let Some(path) = &self.offer.install_check_override().as_ref() else {
             log::warn!("[{}] No install_check_override", self.slug);
             return false;
         };
-        if let Ok(manifest_path) = parse_registry_path_regkey(path).await {
-            use crate::gameinfo::GameInstallInfo;
 
-            let gamedir = manifest_path.ancestors().nth(2).unwrap().to_path_buf(); // Strip off the manifest and just leave the game directory
-            let game_install_info: GameInstallInfo = GameInstallInfo::new(gamedir, None);
+        if let Ok(gamedir) = parse_partial_registry_path(path).await {
+            use crate::gameinfo::GameInstallInfo;
+            let game_install_info: GameInstallInfo = GameInstallInfo::new(gamedir.clone(), None);
             game_install_info.save_to_json(&self.slug);
-            manifest_path.exists()
+            gamedir.exists()
         } else {
             false
         }
