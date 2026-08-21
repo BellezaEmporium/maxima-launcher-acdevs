@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use maxima::content::manager::ProgressCallback;
 use maxima::core::{manifest::handle_touchup_request};
 use clap::{Parser, Subcommand};
 
@@ -8,9 +10,7 @@ use regex::Regex;
 use reqwest;
 
 use std::{
-    path::PathBuf,
-    sync::LazyLock,
-    time::Instant,
+    path::PathBuf, sync::{Arc, LazyLock}, time::Instant,
 };
 
 #[cfg(windows)]
@@ -454,7 +454,7 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
         maxima.update().await;
 
         if let Some(downloader) = maxima.content_manager().current() {
-            info!("Downloading: {:.1}%/100%", downloader.percentage_done());
+            info!("Downloading: {:.1}%/100%, {} bytes out of {}", downloader.percentage_done(), downloader.completed_bytes(), downloader.bytes_total());
         } else {
             break;
         }
@@ -510,9 +510,13 @@ async fn download_specific_file(
         bail!("Couldn't find the file {}", file);
     }
 
+    let completed_bytes = Arc::new(AtomicUsize::new(0));
+    let on_progress: ProgressCallback = Box::new(move |bytes| {
+        completed_bytes.fetch_add(bytes, Ordering::SeqCst);
+    });
     let ele = entry.unwrap();
     let output_dir = std::env::current_dir()?.join("downloads");
-    downloader.download_single_file(ele, &output_dir).await?;
+    downloader.download_single_file(ele, &output_dir, on_progress).await?;
 
     info!(
         "Downloaded file {} from game build {}",

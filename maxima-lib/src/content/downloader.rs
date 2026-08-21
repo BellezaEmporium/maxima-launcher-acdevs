@@ -18,8 +18,7 @@ use tokio::{
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::content::{
-    zip::CompressionType,
-    zlib::{restore_zlib_state, write_zlib_state},
+    manager::ProgressCallback, zip::CompressionType, zlib::{restore_zlib_state, write_zlib_state},
 };
 
 use super::zip::{ZipFile, ZipFileEntry};
@@ -198,6 +197,7 @@ impl ZipDownloader {
         &self,
         entry: &ZipFileEntry,
         output_dir: &Path,
+        progress_callback: ProgressCallback
     ) -> Result<u64> {
         let file_path = output_dir.join(entry.name());
 
@@ -259,7 +259,7 @@ impl ZipDownloader {
                 Box::new(decoder)
             }
         };
-
+        progress_callback(compressed_offset as usize);
         let offset = entry.data_offset();
         let start_offset = offset + compressed_offset as i64;  // Add compressed offset, not decompressed
         let end_offset = offset + entry.compressed_size() - 1;
@@ -309,12 +309,14 @@ impl ZipDownloader {
             }
         };
 
+        let content_length = data.content_length().unwrap_or(0); // Because data gets moved with bytes_stream()
         let stream = ByteCountingStream::new(data.bytes_stream());
         let mut stream_reader = BufReader::new(stream.into_async_read().compat());
 
+        
         tokio::io::copy(&mut stream_reader, &mut writer).await?;
         writer.shutdown().await?; // flush decoder + BufWriter to disk
-
+        progress_callback(content_length as usize);
         Ok(compressed_offset)
     }
 }

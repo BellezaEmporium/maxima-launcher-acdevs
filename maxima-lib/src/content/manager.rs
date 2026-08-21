@@ -144,7 +144,7 @@ impl DownloadQueue {
     }
 }
 
-type ProgressCallback = Box<dyn Fn(usize) + Send>;
+pub type ProgressCallback = Box<dyn Fn(usize) + Send>;
 
 pub struct GameDownloader {
     offer_id: String,
@@ -282,7 +282,7 @@ impl GameDownloader {
                 });
 
                 tokio::select! {
-                    result = downloader.download_single_file(&ele, &output_dir) => {
+                    result = downloader.download_single_file(&ele, &output_dir, on_progress) => {
                         if let Err(err) = result {
                             error!("File download failed: {}", err);
                         }
@@ -343,6 +343,10 @@ impl GameDownloader {
 
     pub fn offer_id(&self) -> &str {
         &self.offer_id
+    }
+
+    pub fn completed_bytes(&self) -> usize {
+        self.completed_bytes.load(Ordering::SeqCst)
     }
 }
 
