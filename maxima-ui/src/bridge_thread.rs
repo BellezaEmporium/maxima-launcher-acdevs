@@ -447,6 +447,16 @@ impl BridgeThread {
                     _ => {}
                 }
 
+                 if let Some(dl) = maxima.content_manager().current() {
+                    backend_responder.send(MaximaLibResponse::DownloadProgressChanged(
+                        dl.offer_id().to_string(),
+                        InteractThreadDownloadProgressResponse {
+                            bytes: dl.bytes_downloaded(),
+                            bytes_total: dl.bytes_total(),
+                        },
+                    )).ok();
+                }
+
                 for ev in maxima.consume_pending_events() {
                     match ev {
                         MaximaEvent::InstallFinished(offer_id) => {

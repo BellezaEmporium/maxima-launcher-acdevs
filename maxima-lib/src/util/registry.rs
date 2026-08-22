@@ -230,7 +230,7 @@ pub async fn parse_registry_path_regkey(key: &str) -> Result<PathBuf, RegistryEr
     let path = if let (Some(first), Some(second)) = (parts.next(), parts.next()) {
         let path = match read_reg_key(first, None).await? {
             Some(path) => path.replace("\\", "/").replace("//", "/"),
-            None => return Ok(PathBuf::from(key.to_owned())),
+            None => return Err(RegistryError::InvalidInstallKey),
         };
 
         let second = second.replace("\\", "/");
@@ -238,7 +238,7 @@ pub async fn parse_registry_path_regkey(key: &str) -> Result<PathBuf, RegistryEr
 
         return Ok([path, second.to_owned()].iter().collect());
     } else {
-        PathBuf::from(key.to_owned())
+        return Err(RegistryError::InvalidInstallKey);
     };
 
     #[cfg(unix)]
@@ -257,12 +257,12 @@ pub async fn parse_partial_registry_path(key: &str) -> Result<PathBuf, RegistryE
     let path = if let (Some(first), Some(_second)) = (parts.next(), parts.next()) {
         let path = match read_reg_key(first, None).await? {
             Some(path) => path.replace("\\", "/"),
-            None => return Ok(PathBuf::from(key.to_owned())),
+            None => return Err(RegistryError::InvalidInstallKey),
         };
 
         return Ok(PathBuf::from(path.to_owned()));
     } else {
-        PathBuf::from(key.to_owned())
+        return Err(RegistryError::InvalidInstallKey);
     };
 
     Ok(path)

@@ -382,14 +382,6 @@ impl ContentManager {
             self.current = None;
         }
 
-        if let Some(current) = &self.queue.current {
-            if current == &game {
-                self.install_direct(game).await?;
-                return Ok(());
-            }
-            self.queue.queued.push(current.clone());
-        }
-
         self.install_direct(game).await?;
         Ok(())
     }

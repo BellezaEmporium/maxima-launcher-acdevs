@@ -106,8 +106,6 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                                         total_bytes: 0,
                                     });
                                 }
-                            } else {
-                                app.installing_now = None;
                             }
 
                             app.install_queue.clear();
@@ -126,6 +124,8 @@ pub fn frontend_processor(app: &mut MaximaEguiApp, ctx: &egui::Context) {
                                     },
                                 );
                             }
+                        } else {
+                            app.installing_now = None;
                         }
                     }
                     DownloadFailed(offer, reason) => {
