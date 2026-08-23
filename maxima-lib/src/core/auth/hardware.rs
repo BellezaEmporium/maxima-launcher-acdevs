@@ -53,7 +53,7 @@ pub enum HardwareHashError {
 
 impl HardwareInfo {
     #[cfg(windows)]
-    pub fn new(version: u32) -> Self {
+    pub fn new(version: u32, _slug: Option<&str>) -> Self {
         use std::collections::HashMap;
 
         use log::warn;
@@ -148,7 +148,7 @@ impl HardwareInfo {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn new(version: u32) -> Self {
+    pub fn new(version: u32, slug: Option<&str>) -> Self {
         use std::{fs, path::Path, process::Command};
 
         let board_manufacturer = match fs::read_to_string("/sys/class/dmi/id/board_vendor") {
@@ -166,7 +166,7 @@ impl HardwareInfo {
         };
 
         let bios_sn = String::from("Serial number");
-        let os_install_date = get_root_creation_str();
+        let os_install_date = get_root_creation_str(slug);
         let os_sn = String::from("00330-50000-00000-AAOEM");
 
         let mut gpu_pnp_id: Option<String> = None;
@@ -245,7 +245,7 @@ impl HardwareInfo {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn new(version: u32) -> Self {
+    pub fn new(version: u32, slug: Option<&str>) -> Self {
         use std::process::Command;
 
         use smbioslib::{
@@ -272,7 +272,7 @@ impl HardwareInfo {
             bios_sn = bios.serial_number().to_string();
         }
 
-        let os_install_date = get_root_creation_str();
+        let os_install_date = get_root_creation_str(slug);
         let mut os_sn = String::from("None");
         if let Some(uuid) = bios_data.and_then(|bios| bios.uuid()) {
             os_sn = uuid.to_string();
@@ -476,18 +476,17 @@ impl HardwareInfo {
 }
 
 #[cfg(unix)]
-fn get_root_creation_str() -> String {
+fn get_root_creation_str(slug: Option<&str>) -> String {
     use crate::unix::wine::wine_prefix_dir;
     use chrono::{DateTime, TimeZone};
     use std::{fs, os::unix::fs::MetadataExt};
 
     let date_str = String::from("1970010100:00:00.000000000+0000");
-    let wine_prefix = wine_prefix_dir();
-    if wine_prefix.is_err() {
-        return date_str;
-    }
-    let wine_prefix = wine_prefix.unwrap();
-    let date_str = match fs::metadata(wine_prefix.join("drive_c")) {
+    let wine_prefix = match slug {
+        Some(slug) => wine_prefix_dir(Some(slug)).unwrap(),
+        None => return date_str,
+    };
+    let date_str = match fs::metadata(wine_prefix.join("pfx").join("drive_c")) {
         Ok(metadata) => {
             let nsec = (metadata.mtime_nsec() / 1_000_000) * 1_000_000;
             // Convert Unix timestamp to a DateTime

@@ -1,3 +1,4 @@
+use crate::{content::exclusion::get_exclusion_list, core::manifest::handle_touchup_request};
 use std::{
     path::PathBuf,
     sync::{
@@ -19,11 +20,22 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     content::{
-        ContentService, downloader::{DownloadError, ZipDownloader}, zip::{CompressionType, ZipError, ZipFileEntry},
-    }, core::{
-        MaximaEvent, auth::storage::LockedAuthStorage, background_service::{BACKGROUND_SERVICE_PORT, ServiceTouchupRequest}, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::ServiceLayerError,
-    }, util::native::{NativeError, maxima_dir},
+        ContentService,
+        downloader::{DownloadError, ZipDownloader},
+        zip::{CompressionType, ZipError, ZipFileEntry},
+    },
+    core::{
+        MaximaEvent,
+        auth::storage::LockedAuthStorage,
+        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
+        service_layer::ServiceLayerError,
+    },
+    gameinfo::GameInstallInfo,
+    util::native::{NativeError, maxima_dir},
 };
+
+#[cfg(unix)]
+use crate::core::launch::mx_linux_setup;
 
 const QUEUE_FILE: &str = "download_queue.json";
 const MAX_CONCURRENT_DOWNLOADS: usize = 16;
@@ -33,6 +45,8 @@ pub struct QueuedGame {
     offer_id: String,
     build_id: String,
     path: PathBuf,
+    slug: String,
+    wine_prefix: Option<PathBuf>,
 }
 
 #[derive(Default, Getters, Serialize, Deserialize)]
@@ -130,10 +144,13 @@ impl DownloadQueue {
     }
 }
 
-type ProgressCallback = Box<dyn Fn(usize) + Send>;
+pub type ProgressCallback = Box<dyn Fn(usize) + Send>;
 
 pub struct GameDownloader {
     offer_id: String,
+    slug: String,
+    path: PathBuf,
+    wine_prefix: Option<PathBuf>,
     downloader: Arc<ZipDownloader>,
     entries: Vec<ZipFileEntry>,
     output_dir: PathBuf,
@@ -156,7 +173,17 @@ impl GameDownloader {
         debug!("URL: {}", url.url());
 
         let downloader = ZipDownloader::new(url.url()).await?;
-        let entries = downloader.manifest().entries().to_vec();
+        let exclusion_list = get_exclusion_list(&game.slug());
+        let mut entries = Vec::new();
+        for ele in downloader.manifest().entries() 
+        {
+            // TODO: Filtering
+            if exclusion_list.is_match(&ele.name()) {
+                // info!("Excluding file from download: {}", ele.name()); Spams if a lot of files are excluded
+                continue;
+            }
+            entries.push(ele.clone());
+        }
 
         let total_count = entries.len();
         let total_bytes = entries
@@ -167,6 +194,9 @@ impl GameDownloader {
 
         Ok(GameDownloader {
             offer_id: game.offer_id.to_owned(),
+            slug: game.slug.to_owned(),
+            path: game.path.to_owned(),
+            wine_prefix: game.wine_prefix.clone(),
             downloader: Arc::new(downloader),
             entries,
             output_dir: game.path.clone(),
@@ -183,6 +213,8 @@ impl GameDownloader {
             self.prepare_download_vars();
         let notify_done = notify.clone();
 
+        let slug = self.slug.clone();
+        let game_install_info = GameInstallInfo::new(self.path.clone(), self.wine_prefix.clone());
         tokio::spawn(async move {
             let dl = GameDownloader::start_downloads(
                 downloader_arc,
@@ -191,6 +223,8 @@ impl GameDownloader {
                 completed_bytes,
                 notify,
                 output_dir,
+                slug,
+                game_install_info,
             )
             .await;
             if let Err(err) = dl {
@@ -227,6 +261,8 @@ impl GameDownloader {
         completed_bytes: Arc<AtomicUsize>,
         notify: Arc<Notify>,
         output_dir: PathBuf,
+        slug: String,
+        game_install_info: GameInstallInfo,
     ) -> Result<(), DownloaderError> {
         let mut handles = Vec::with_capacity(entries.len());
 
@@ -246,7 +282,7 @@ impl GameDownloader {
                 });
 
                 tokio::select! {
-                    result = downloader.download_single_file(&ele, &output_dir) => {
+                    result = downloader.download_single_file(&ele, &output_dir, on_progress) => {
                         if let Err(err) = result {
                             error!("File download failed: {}", err);
                         }
@@ -270,22 +306,10 @@ impl GameDownloader {
             return Ok(());
         }
 
-        info!("Files downloaded, running touchup...");
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(format!("http://127.0.0.1:{}/touchup", BACKGROUND_SERVICE_PORT))
-            .json(&ServiceTouchupRequest {
-                output_dir: output_dir.to_string_lossy().into_owned(),
-            })
-            .send()
-            .await?;
+        handle_touchup_request(&output_dir, &slug).await?; // output dir is install path
 
-        if !resp.status().is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(DownloaderError::Other(anyhow::anyhow!("Touchup request failed: {}", text)));
-        }
         info!("Installation finished!");
-
+        game_install_info.save_to_json(&slug);
         completed_bytes.fetch_add(1, Ordering::SeqCst);
         notify.notify_one();
         Ok(())
@@ -320,6 +344,10 @@ impl GameDownloader {
     pub fn offer_id(&self) -> &str {
         &self.offer_id
     }
+
+    pub fn completed_bytes(&self) -> usize {
+        self.completed_bytes.load(Ordering::SeqCst)
+    }
 }
 
 #[derive(Getters)]
@@ -352,14 +380,6 @@ impl ContentManager {
         if let Some(current) = &self.current {
             current.cancel();
             self.current = None;
-        }
-
-        if let Some(current) = &self.queue.current {
-            if current == &game {
-                self.install_direct(game).await?;
-                return Ok(());
-            }
-            self.queue.queued.push(current.clone());
         }
 
         self.install_direct(game).await?;

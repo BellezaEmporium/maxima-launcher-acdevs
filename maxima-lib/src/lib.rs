@@ -1,5 +1,6 @@
 pub mod content;
 pub mod core;
+pub mod gameinfo;
 pub mod lsx;
 pub mod ooa;
 pub mod rtm;

@@ -1,3 +1,7 @@
+use log::info;
+use std::path::PathBuf;
+use thiserror::Error;
+
 #[cfg(windows)]
 use std::ptr;
 
@@ -6,10 +10,10 @@ use widestring::U16CString;
 
 #[cfg(windows)]
 use windows_sys::Win32::{
-    Foundation::{ERROR_CANCELLED, CloseHandle, GetLastError},
+    Foundation::{CloseHandle, ERROR_CANCELLED, GetLastError},
     System::Registry::{HKEY, KEY_QUERY_VALUE, RegCloseKey, RegOpenKeyExW, RegQueryValueExW},
+    System::Threading::{INFINITE, WaitForSingleObject},
     UI::Shell::{SEE_MASK_NO_CONSOLE, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
-    System::Threading::{WaitForSingleObject, INFINITE}
 };
 
 #[cfg(windows)]
@@ -18,11 +22,10 @@ use winreg::{
     enums::{HKEY_CLASSES_ROOT, HKEY_LOCAL_MACHINE, KEY_WRITE},
 };
 
-use std::path::PathBuf;
 #[cfg(unix)]
 use std::{collections::HashMap, env, fs};
-use thiserror::Error;
 
+use crate::gameinfo::load_game_info_from_json;
 #[cfg(unix)]
 use crate::unix::fs::case_insensitive_path;
 
@@ -65,32 +68,6 @@ pub enum RegistryError {
     XdgQueryFailed,
     #[error("QRC protocol is not registered")]
     QrcUnregistered,
-}
-
-#[cfg(windows)]
-pub fn check_registry_validity() -> Result<(), RegistryError> {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let origin = hklm.open_subkey(format!("{}\\Origin", REG_ARCH_PATH))?;
-
-    let path: String = origin.get_value("ClientPath")?;
-    let valid = path == bootstrap_path()?.safe_str()?;
-    if !valid {
-        return Err(RegistryError::InvalidStoredClientPath);
-    }
-
-    let eax32 = hklm.open_subkey(REG_EAX32_PATH)?;
-    let install_succesful: String = eax32.get_value("InstallSuccessful")?;
-    if install_succesful != "true" {
-        return Err(RegistryError::InvalidInstallKey);
-    }
-
-    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
-    let qrc = hkcr.open_subkey("qrc");
-    if qrc.is_err() {
-        return Err(RegistryError::InvalidQrcProtocol);
-    }
-
-    Ok(())
 }
 
 #[cfg(windows)]
@@ -179,7 +156,33 @@ fn inject_wow6432node(sub_key: &str) -> Option<String> {
 }
 
 #[cfg(windows)]
-async fn read_reg_key(path: &str) -> Result<Option<String>, RegistryError> {
+pub fn check_registry_validity() -> Result<(), RegistryError> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let origin = hklm.open_subkey(format!("{}\\Origin", REG_ARCH_PATH))?;
+
+    let path: String = origin.get_value("ClientPath")?;
+    let valid = path == bootstrap_path()?.safe_str()?;
+    if !valid {
+        return Err(RegistryError::InvalidStoredClientPath);
+    }
+
+    let eax32 = hklm.open_subkey(REG_EAX32_PATH)?;
+    let install_succesful: String = eax32.get_value("InstallSuccessful")?;
+    if install_succesful != "true" {
+        return Err(RegistryError::InvalidInstallKey);
+    }
+
+    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
+    let qrc = hkcr.open_subkey("qrc");
+    if qrc.is_err() {
+        return Err(RegistryError::InvalidQrcProtocol);
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+async fn read_reg_key(path: &str, _slug: Option<&str>) -> Result<Option<String>, RegistryError> {
     if let (Some(hkey_segment), Some(value_segment)) = (path.find('\\'), path.rfind('\\')) {
         let sub_key = &path[(hkey_segment + 1)..value_segment];
         let value_name = &path[(value_segment + 1)..];
@@ -202,21 +205,32 @@ async fn read_reg_key(path: &str) -> Result<Option<String>, RegistryError> {
     Ok(None)
 }
 
-#[cfg(unix)]
-async fn read_reg_key(path: &str) -> Result<Option<String>, RegistryError> {
-    use crate::unix::wine::get_mx_wine_registry_value;
-    Ok(get_mx_wine_registry_value(path).await?)
+pub async fn parse_registry_path_json(
+    key: &str,
+    slug: Option<&str>,
+) -> Result<PathBuf, RegistryError> {
+    let game_install_info =
+        load_game_info_from_json(slug.unwrap()).map_err(|_| RegistryError::InvalidInstallKey)?;
+    let idx = key.rfind(']');
+    // Path looks like [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe (note this could be something other than the exe like the manifest)
+    // Extract everything after the last ] and append it to the install path
+    let after_bracket = &key[(idx.unwrap() + 1)..];
+    let path = game_install_info.path().join(after_bracket);
+    #[cfg(unix)]
+    let path = case_insensitive_path(path);
+    Ok(path)
 }
 
-pub async fn parse_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
+#[cfg(windows)]
+pub async fn parse_registry_path_regkey(key: &str) -> Result<PathBuf, RegistryError> {
     let mut parts = key
         .split(|c| c == '[' || c == ']')
         .filter(|s| !s.is_empty());
 
     let path = if let (Some(first), Some(second)) = (parts.next(), parts.next()) {
-        let path = match read_reg_key(first).await? {
+        let path = match read_reg_key(first, None).await? {
             Some(path) => path.replace("\\", "/").replace("//", "/"),
-            None => return Ok(PathBuf::from(key.to_owned())),
+            None => return Err(RegistryError::InvalidInstallKey),
         };
 
         let second = second.replace("\\", "/");
@@ -224,7 +238,7 @@ pub async fn parse_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
 
         return Ok([path, second.to_owned()].iter().collect());
     } else {
-        PathBuf::from(key.to_owned())
+        return Err(RegistryError::InvalidInstallKey);
     };
 
     #[cfg(unix)]
@@ -232,24 +246,25 @@ pub async fn parse_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
     Ok(path)
 }
 
+// [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe 
+// Will replace the registry key with the install dir and will only return that (IE will drop everything after the last ])
+#[cfg(windows)]
 pub async fn parse_partial_registry_path(key: &str) -> Result<PathBuf, RegistryError> {
     let mut parts = key
         .split(|c: char| c == '[' || c == ']')
         .filter(|s| !s.is_empty());
 
     let path = if let (Some(first), Some(_second)) = (parts.next(), parts.next()) {
-        let path = match read_reg_key(first).await? {
+        let path = match read_reg_key(first, None).await? {
             Some(path) => path.replace("\\", "/"),
-            None => return Ok(PathBuf::from(key.to_owned())),
+            None => return Err(RegistryError::InvalidInstallKey),
         };
 
         return Ok(PathBuf::from(path.to_owned()));
     } else {
-        PathBuf::from(key.to_owned())
+        return Err(RegistryError::InvalidInstallKey);
     };
 
-    #[cfg(unix)]
-    let path = case_insensitive_path(path);
     Ok(path)
 }
 

@@ -1,4 +1,8 @@
-use egui::Context;
+use maxima::core::manifest::handle_touchup_request;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::UnboundedReceiver;
+use egui::{Context, Key::W};
 use log::{error, info, warn};
 use thiserror::Error;
 
@@ -28,15 +32,15 @@ use maxima::{
             ServiceLayerError, ServicePlayer,
         },
     },
+    gameinfo::GameInstallInfo,
     lsx::service::LSXServerError,
     rtm::RtmError,
     util::{
-        native::NativeError,
+        native::{NativeError, maxima_dir},
         registry::{RegistryError, check_registry_validity, set_up_registry},
     },
 };
 use std::{path::PathBuf, time::Duration};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 // TODO(headassbtw): integrate these all into the enums
 pub struct InteractThreadLoginResponse {
@@ -79,11 +83,11 @@ pub enum MaximaLibRequest {
     GetFriendsRequest,
     GetGameDetailsRequest(String),
     StartGameRequest(GameInfo, Option<GameSettings>),
-    InstallGameRequest(String, PathBuf),
-    CancelInstallRequest(String),
+    InstallGameRequest(String, String, PathBuf, Option<PathBuf>), // offer, slug, path, wine prefix (unix only)
     PauseInstallRequest(String),
     MoveInstallToTopRequest(String),
-    LocateGameRequest(String),
+    LocateGameRequest(String, String, Option<PathBuf>), // slug, path, wine prefix (unix only)
+    CancelInstallRequest(String),
     ShutdownRequest,
 }
 
@@ -443,6 +447,16 @@ impl BridgeThread {
                     _ => {}
                 }
 
+                 if let Some(dl) = maxima.content_manager().current() {
+                    backend_responder.send(MaximaLibResponse::DownloadProgressChanged(
+                        dl.offer_id().to_string(),
+                        InteractThreadDownloadProgressResponse {
+                            bytes: dl.bytes_downloaded(),
+                            bytes_total: dl.bytes_total(),
+                        },
+                    )).ok();
+                }
+
                 for ev in maxima.consume_pending_events() {
                     match ev {
                         MaximaEvent::InstallFinished(offer_id) => {
@@ -507,35 +521,18 @@ impl BridgeThread {
                         };
                         f().await
                     }
-                    MaximaLibRequest::LocateGameRequest(mut path) => {
-                        #[cfg(unix)]
-                        maxima::core::launch::mx_linux_setup().await?;
-
+                    MaximaLibRequest::LocateGameRequest(slug, mut path, wine_prefix) => {
                         if path.ends_with('/') || path.ends_with('\\') {
                             path.pop();
                         }
 
-                        let path = PathBuf::from(path);
+                         let path = PathBuf::from(path);
                         let manifest_path = path.join(MANIFEST_RELATIVE_PATH);
-
-                        let response = match manifest::read(manifest_path.clone()).await {
+                        let response = match manifest::load_manifest_from_disk(manifest_path.clone()).await {
                             Ok(manifest) => {
-                                let should_force_touchup = match tokio::fs::read_to_string(&manifest_path).await {
-                                    Ok(xml) => {
-                                        xml.contains("forceTouchupInstallerAfterUpdate=\"true\"")
-                                            || xml.contains("<forceTouchupInstallerAfterUpdate>true</forceTouchupInstallerAfterUpdate>")
-                                    }
-                                    Err(err) => {
-                                        warn!(
-                                            "Failed to inspect forceTouchupInstallerAfterUpdate during locate ({}), skipping touchup",
-                                            err
-                                        );
-                                        false
-                                    }
-                                };
-
+                                let should_force_touchup = manifest.needs_touchup_on_locate();
                                 if should_force_touchup {
-                                    match manifest.run_touchup(&path).await {
+                                    match handle_touchup_request(&path, &slug).await {
                                         Ok(()) => InteractThreadLocateGameResponse::Success,
                                         Err(err) => {
                                             warn!("Touchup failed during locate, treating as success: {}", err);
@@ -558,11 +555,14 @@ impl BridgeThread {
                             .send(MaximaLibResponse::LocateGameResponse(response))
                             .ok();
                         info!("finished locating");
+                        let game_install_info =
+                            GameInstallInfo::new(PathBuf::from(path.clone()), wine_prefix);
+                        game_install_info.save_to_json(&slug);
                         ctx.request_repaint();
                         Ok(())
                     }
 
-                    MaximaLibRequest::InstallGameRequest(offer, path) => {
+                    MaximaLibRequest::InstallGameRequest(offer, slug, path, wine_prefix) => {
                         let mut maxima = maxima_arc.lock().await;
                         let builds = maxima.content_manager().service().available_builds(&offer).await?;
                         let build = builds.live_build().ok_or(BackendError::NoLiveBuildAvailable)?;
@@ -570,6 +570,8 @@ impl BridgeThread {
                             .offer_id(offer)
                             .build_id(build.build_id().to_owned())
                             .path(path)
+                            .slug(slug)
+                            .wine_prefix(wine_prefix)
                             .build()?;
                         maxima.content_manager().add_install(game).await?;
                         Self::update_queue(maxima.content_manager(), backend_responder.clone());

@@ -1,5 +1,5 @@
 use crate::{
-    GameDetailsWrapper, GameInfo, GameVersionInfo,
+    GameDetailsWrapper, GameInfo, GameSettings, GameVersionInfo,
     bridge_thread::{BackendError, InteractThreadGameListResponse, MaximaLibResponse},
     ui_image::UIImageCacheLoaderCommand,
 };
@@ -215,7 +215,6 @@ pub async fn get_games_request(
     for game in owned_games {
         let slug = game.base_offer().slug().clone();
         info!("processing {}", &slug);
-
         let downloads = game.base_offer().offer().downloads();
         let opt = if downloads.len() == 1 {
             &downloads[0]
@@ -254,10 +253,10 @@ pub async fn get_games_request(
         };
 
         let slug = game_info.slug.clone();
-        let settings = crate::GameSettings {
-            cloud_saves: true,
-            launch_args: String::new(),
+        let settings = GameSettings {
             exe_override: String::new(),
+            launch_args: String::new(),
+            cloud_saves: true,
         };
 
         channel

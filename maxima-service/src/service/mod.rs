@@ -291,11 +291,11 @@ async fn req_touchup(body: web::Bytes) -> Result<HttpResponse, ServerError> {
     info!("Running touchup");
 
     let request: ServiceTouchupRequest = serde_json::from_slice(&body)?;
-    let manifest = maxima::core::manifest::read(
+    let manifest = maxima::core::manifest::load_manifest_from_disk(
         Path::new(&request.output_dir).join(maxima::core::manifest::MANIFEST_RELATIVE_PATH),
     )
     .await?;
-    manifest.run_touchup(Path::new(&request.output_dir)).await?;
+    manifest.run_touchup(Path::new(&request.output_dir), &request.slug).await?;
 
     Ok(HttpResponse::Ok().body("Done"))
 }

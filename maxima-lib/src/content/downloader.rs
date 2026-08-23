@@ -13,13 +13,12 @@ use log::{debug, error, info};
 use reqwest::{Client, StatusCode};
 use strum_macros::Display;
 use tokio::{
-    fs::{OpenOptions, create_dir, create_dir_all}, io::{AsyncWrite, AsyncWriteExt, BufReader},
+    fs::{self, OpenOptions, create_dir, create_dir_all}, io::{AsyncWrite, AsyncWriteExt, BufReader},
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::content::{
-    zip::CompressionType,
-    zlib::{restore_zlib_state, write_zlib_state},
+    manager::ProgressCallback, zip::CompressionType, zlib::{restore_zlib_state, write_zlib_state},
 };
 
 use super::zip::{ZipFile, ZipFileEntry};
@@ -41,16 +40,18 @@ trait RestorableDecoder {
 struct RestorableDeflateDecoder<W: AsyncWrite> {
     inner: DeflateDecoder<W>,
     file_name: String,
+    file_path: PathBuf,
     bytes_written: usize,
     bytes_since_last: usize,
     should_save: bool,
 }
 
 impl<W: AsyncWrite> RestorableDeflateDecoder<W> {
-    fn new(decoder: DeflateDecoder<W>, file_name: String) -> Self {
+    fn new(decoder: DeflateDecoder<W>, file_name: String, file_path: PathBuf) -> Self {
         Self {
             inner: decoder,
             file_name,
+            file_path,
             bytes_written: 0,
             bytes_since_last: 0,
             should_save: false,
@@ -106,6 +107,9 @@ impl<W: AsyncWrite> RestorableDecoder for RestorableDeflateDecoder<W> {
     }
 
     fn restore_state(&mut self) -> Result<(u64, u64), DecoderRestoreError> {
+        if !self.file_path.exists() || std::fs::metadata(self.file_path.clone()).unwrap().len() == 0 {
+            return Err(DecoderRestoreError::CacheEmpty);
+        }
         let path = self
             .state_path()
             .map_err(|_| DecoderRestoreError::CacheEmpty)?;
@@ -193,6 +197,7 @@ impl ZipDownloader {
         &self,
         entry: &ZipFileEntry,
         output_dir: &Path,
+        progress_callback: ProgressCallback
     ) -> Result<u64> {
         let file_path = output_dir.join(entry.name());
 
@@ -216,11 +221,14 @@ impl ZipDownloader {
             return Ok(0);
         }
 
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&file_path)
-            .await?;
+        let mut file_opts = OpenOptions::new();
+        if file_path.exists() {
+            file_opts.append(true); // Existence check because the file is created with read only perms with append (bug in tokio maybe?)
+        } else {
+            file_opts.write(true);
+        }
+
+        let file = file_opts.create(true).open(&file_path).await?;
 
         let mut compressed_offset = 0;
         let writer = tokio::io::BufWriter::new(file);
@@ -234,7 +242,7 @@ impl ZipDownloader {
             }
             CompressionType::Deflate => {
                 let decoder = DeflateDecoder::new(writer);
-                let mut decoder = RestorableDeflateDecoder::new(decoder, entry.name().into());
+                let mut decoder = RestorableDeflateDecoder::new(decoder, entry.name().into(), file_path.clone());
 
                 match decoder.restore_state() {
                     Ok((bytes_in, _bytes_out)) => {
@@ -251,7 +259,7 @@ impl ZipDownloader {
                 Box::new(decoder)
             }
         };
-
+        progress_callback(compressed_offset as usize);
         let offset = entry.data_offset();
         let start_offset = offset + compressed_offset as i64;  // Add compressed offset, not decompressed
         let end_offset = offset + entry.compressed_size() - 1;
@@ -301,12 +309,14 @@ impl ZipDownloader {
             }
         };
 
+        let content_length = data.content_length().unwrap_or(0); // Because data gets moved with bytes_stream()
         let stream = ByteCountingStream::new(data.bytes_stream());
         let mut stream_reader = BufReader::new(stream.into_async_read().compat());
 
+        
         tokio::io::copy(&mut stream_reader, &mut writer).await?;
         writer.shutdown().await?; // flush decoder + BufWriter to disk
-
+        progress_callback(content_length as usize);
         Ok(compressed_offset)
     }
 }
