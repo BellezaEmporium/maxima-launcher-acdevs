@@ -5,7 +5,7 @@ use std::{
     task::{self, Poll},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_compression::tokio::write::DeflateDecoder;
 use bytes::{Bytes, BytesMut};
 use futures::{Stream, StreamExt, TryStreamExt};
@@ -13,12 +13,15 @@ use log::{debug, error, info};
 use reqwest::{Client, StatusCode};
 use strum_macros::Display;
 use tokio::{
-    fs::{self, OpenOptions, create_dir, create_dir_all}, io::{AsyncWrite, AsyncWriteExt, BufReader},
+    fs::{self, OpenOptions, create_dir, create_dir_all},
+    io::{AsyncWrite, AsyncWriteExt, BufReader},
 };
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::content::{
-    manager::ProgressCallback, zip::CompressionType, zlib::{restore_zlib_state, write_zlib_state},
+    manager::ProgressCallback,
+    zip::CompressionType,
+    zlib::{restore_zlib_state, write_zlib_state},
 };
 
 use super::zip::{ZipFile, ZipFileEntry};
@@ -69,7 +72,7 @@ impl<W: AsyncWrite> RestorableDeflateDecoder<W> {
             .ok_or_else(|| anyhow::anyhow!("no cache dir"))?
             .join("Maxima");
         std::fs::create_dir_all(&dir)?;
-        
+
         let safe_name = self.file_name.replace(['/', '\\'], "_");
         Ok(dir.join(format!("{}.state", safe_name)))
     }
@@ -107,7 +110,8 @@ impl<W: AsyncWrite> RestorableDecoder for RestorableDeflateDecoder<W> {
     }
 
     fn restore_state(&mut self) -> Result<(u64, u64), DecoderRestoreError> {
-        if !self.file_path.exists() || std::fs::metadata(self.file_path.clone()).unwrap().len() == 0 {
+        if !self.file_path.exists() || std::fs::metadata(self.file_path.clone()).unwrap().len() == 0
+        {
             return Err(DecoderRestoreError::CacheEmpty);
         }
         let path = self
@@ -179,7 +183,7 @@ impl ZipDownloader {
             let _ = std::fs::remove_file(dir.join("Maxima").join(format!("{}.state", safe_name)));
         }
     }
-    
+
     pub async fn new(url: &str) -> Result<Self> {
         let manifest = ZipFile::fetch(url).await?;
         Ok(Self {
@@ -197,7 +201,7 @@ impl ZipDownloader {
         &self,
         entry: &ZipFileEntry,
         output_dir: &Path,
-        progress_callback: ProgressCallback
+        progress_callback: ProgressCallback,
     ) -> Result<u64> {
         let file_path = output_dir.join(entry.name());
 
@@ -242,12 +246,13 @@ impl ZipDownloader {
             }
             CompressionType::Deflate => {
                 let decoder = DeflateDecoder::new(writer);
-                let mut decoder = RestorableDeflateDecoder::new(decoder, entry.name().into(), file_path.clone());
+                let mut decoder =
+                    RestorableDeflateDecoder::new(decoder, entry.name().into(), file_path.clone());
 
                 match decoder.restore_state() {
                     Ok((bytes_in, _bytes_out)) => {
                         // bytes_in = compressed bytes consumed (from zlib state)
-                        compressed_offset = bytes_in;  // Use this for HTTP range
+                        compressed_offset = bytes_in; // Use this for HTTP range
                         // Note: we don't need bytes_out here, but we keep it for set_len
                         decoder.get_mut().get_mut().set_len(_bytes_out).await?;
                     }
@@ -261,10 +266,15 @@ impl ZipDownloader {
         };
         progress_callback(compressed_offset as usize);
         let offset = entry.data_offset();
-        let start_offset = offset + compressed_offset as i64;  // Add compressed offset, not decompressed
+        let start_offset = offset + compressed_offset as i64; // Add compressed offset, not decompressed
         let end_offset = offset + entry.compressed_size() - 1;
 
-        debug!("Requesting range: {}-{} (entry compressed size: {})", start_offset, end_offset, entry.compressed_size());
+        debug!(
+            "Requesting range: {}-{} (entry compressed size: {})",
+            start_offset,
+            end_offset,
+            entry.compressed_size()
+        );
 
         // Ensure we don't request past the end or invalid ranges
         if compressed_offset >= *entry.compressed_size() as u64 {
@@ -274,7 +284,11 @@ impl ZipDownloader {
             return Ok(compressed_offset);
         }
         if start_offset > end_offset {
-            bail!("Invalid range calculation: start {} > end {}", start_offset, end_offset);
+            bail!(
+                "Invalid range calculation: start {} > end {}",
+                start_offset,
+                end_offset
+            );
         }
 
         let range = format!("bytes={}-{}", start_offset, end_offset);
@@ -302,7 +316,10 @@ impl ZipDownloader {
                     break res;
                 }
                 Err(err) if attempt < MAX_RETRIES => {
-                    error!("Failed to download ({}) attempt {attempt}: {err}", file_path.display());
+                    error!(
+                        "Failed to download ({}) attempt {attempt}: {err}",
+                        file_path.display()
+                    );
                     tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
                 }
                 Err(err) => return Err(err.into()),
@@ -313,7 +330,6 @@ impl ZipDownloader {
         let stream = ByteCountingStream::new(data.bytes_stream());
         let mut stream_reader = BufReader::new(stream.into_async_read().compat());
 
-        
         tokio::io::copy(&mut stream_reader, &mut writer).await?;
         writer.shutdown().await?; // flush decoder + BufWriter to disk
         progress_callback(content_length as usize);
@@ -331,7 +347,10 @@ where
     S: Stream<Item = Result<Bytes, reqwest::Error>>,
 {
     fn new(inner: S) -> Self {
-        Self { inner, byte_count: 0 }
+        Self {
+            inner,
+            byte_count: 0,
+        }
     }
 }
 

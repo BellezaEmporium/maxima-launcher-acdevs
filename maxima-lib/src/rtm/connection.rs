@@ -214,9 +214,7 @@ impl RtmConnectionManager {
                 }
                 _ => Err(RtmError::NoBody),
             },
-            Err(_) => Err(RtmError::Io(io::Error::other(
-                "Failed to receive response",
-            ))),
+            Err(_) => Err(RtmError::Io(io::Error::other("Failed to receive response"))),
         }
     }
 

@@ -1,15 +1,17 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use maxima::content::manager::ProgressCallback;
-use maxima::core::{manifest::handle_touchup_request};
 use clap::{Parser, Subcommand};
+use maxima::content::manager::ProgressCallback;
+use maxima::core::manifest::handle_touchup_request;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use inquire::{Select, Text};
 use log::{debug, error, info, warn};
 use regex::Regex;
 
 use std::{
-    path::PathBuf, sync::{Arc, LazyLock}, time::Instant,
+    path::PathBuf,
+    sync::{Arc, LazyLock},
+    time::Instant,
 };
 
 #[cfg(windows)]
@@ -17,20 +19,34 @@ use is_elevated::is_elevated;
 
 #[cfg(windows)]
 use maxima::{
-    core::background_service::{request_registry_setup},
+    core::background_service::request_registry_setup,
     util::service::{is_service_running, is_service_valid, register_service_user, start_service},
 };
 
 use maxima::{
-    content::{
-        ContentService, downloader::ZipDownloader, manager::QueuedGameBuilder,
-    }, core::{
-        LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder, auth::{
-            TokenResponse, context::AuthContext, login::{begin_oauth_login_flow, manual_login}, nucleus_auth_exchange, nucleus_token_exchange,
-        }, clients::JUNO_PC_CLIENT_ID, cloudsync::CloudSyncLockMode, launch::{self, LaunchMode, LaunchOptions}, library::OwnedTitle, manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError}, service_layer::{
-            SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS, ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder, ServiceLegacyOffer, ServicePlayer,
+    content::{ContentService, downloader::ZipDownloader, manager::QueuedGameBuilder},
+    core::{
+        LockedMaxima, Maxima, MaximaEvent, MaximaOptionsBuilder,
+        auth::{
+            TokenResponse,
+            context::AuthContext,
+            login::{begin_oauth_login_flow, manual_login},
+            nucleus_auth_exchange, nucleus_token_exchange,
         },
-    }, ooa, rtm::client::BasicPresence, util::{
+        clients::JUNO_PC_CLIENT_ID,
+        cloudsync::CloudSyncLockMode,
+        launch::{self, LaunchMode, LaunchOptions},
+        library::OwnedTitle,
+        manifest::{self, MANIFEST_RELATIVE_PATH, ManifestError},
+        service_layer::{
+            SERVICE_REQUEST_GETBASICPLAYER, SERVICE_REQUEST_GETLEGACYCATALOGDEFS,
+            ServiceGetBasicPlayerRequestBuilder, ServiceGetLegacyCatalogDefsRequestBuilder,
+            ServiceLegacyOffer, ServicePlayer,
+        },
+    },
+    ooa,
+    rtm::client::BasicPresence,
+    util::{
         log::init_logger,
         native::{maxima_dir, take_foreground_focus},
         registry::check_registry_validity,
@@ -386,10 +402,7 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
         })
         .await??;
 
-        owned_games
-            .iter()
-            .find(|g| g.name() == name)
-            .unwrap()
+        owned_games.iter().find(|g| g.name() == name).unwrap()
     };
 
     let offer_id = game.base_offer().offer_id().to_owned();
@@ -413,7 +426,8 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
 
     let path = PathBuf::from(
         tokio::task::spawn_blocking(|| {
-            Text::new("Where would you like to install the game? (must be an absolute path)").prompt()
+            Text::new("Where would you like to install the game? (must be an absolute path)")
+                .prompt()
         })
         .await??,
     );
@@ -425,7 +439,8 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
     #[cfg(unix)]
     let wine_prefix = {
         let input = tokio::task::spawn_blocking(|| {
-            Text::new("Where do you want to store the Wine prefix? (must be an absolute path)").prompt()
+            Text::new("Where do you want to store the Wine prefix? (must be an absolute path)")
+                .prompt()
         })
         .await??;
         let p = PathBuf::from(input);
@@ -471,7 +486,12 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
         if let Some(downloader) = maxima.content_manager().current() {
             saw_downloader = true;
             idle_ticks = 0;
-            info!("Downloading: {:.1}%/100%, {} bytes out of {}", downloader.percentage_done(), downloader.completed_bytes(), downloader.bytes_total());
+            info!(
+                "Downloading: {:.1}%/100%, {} bytes out of {}",
+                downloader.percentage_done(),
+                downloader.completed_bytes(),
+                downloader.bytes_total()
+            );
         } else if saw_downloader {
             break;
         } else {
@@ -538,7 +558,9 @@ async fn download_specific_file(
     });
     let ele = entry.unwrap();
     let output_dir = std::env::current_dir()?.join("downloads");
-    downloader.download_single_file(ele, &output_dir, on_progress).await?;
+    downloader
+        .download_single_file(ele, &output_dir, on_progress)
+        .await?;
 
     info!(
         "Downloaded file {} from game build {}",
@@ -864,11 +886,7 @@ async fn start_game(
 
         launch::start_game(
             maxima_arc.clone(),
-            LaunchMode::OnlineOffline(
-                offer_id.to_owned(),
-                persona.to_owned(),
-                password.to_owned(),
-            ),
+            LaunchMode::OnlineOffline(offer_id.to_owned(), persona.to_owned(), password.to_owned()),
             launch_options,
         )
         .await?;

@@ -146,14 +146,13 @@ pub fn restore_zlib_state(buf: &mut Bytes, stream: &mut mz_stream) {
         let zalloc = stream.zalloc;
         state_ref.window =
             unsafe { zalloc(stream.opaque, 1, window_size as c_uint) as *mut c_char };
-        assert!(!state_ref.window.is_null(), "zalloc failed for inflate window");
+        assert!(
+            !state_ref.window.is_null(),
+            "zalloc failed for inflate window"
+        );
 
         unsafe {
-            ptr::copy_nonoverlapping(
-                window.as_ptr(),
-                state_ref.window as *mut u8,
-                window_size,
-            );
+            ptr::copy_nonoverlapping(window.as_ptr(), state_ref.window as *mut u8, window_size);
         }
     }
 
@@ -161,7 +160,11 @@ pub fn restore_zlib_state(buf: &mut Bytes, stream: &mut mz_stream) {
     let distcode = buf.get_u32() as isize;
     let nextcode = buf.get_u32() as isize;
 
-    for (name, idx) in [("lencode", lencode), ("distcode", distcode), ("next", nextcode)] {
+    for (name, idx) in [
+        ("lencode", lencode),
+        ("distcode", distcode),
+        ("next", nextcode),
+    ] {
         assert!(
             (0..Z_ENOUGH as isize).contains(&idx),
             "Can't deserialize this zlib state, {name} out of range"

@@ -60,7 +60,7 @@ pub struct OwnedOffer {
 impl OwnedOffer {
     #[cfg(windows)]
     pub async fn check_install_win_registry(&self) -> bool {
-        use crate::util::registry::{parse_partial_registry_path};
+        use crate::util::registry::parse_partial_registry_path;
 
         let Some(path) = &self.offer.install_check_override().as_ref() else {
             log::warn!("[{}] No install_check_override", self.slug);

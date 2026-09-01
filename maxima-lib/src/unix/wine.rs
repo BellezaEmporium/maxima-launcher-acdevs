@@ -273,7 +273,8 @@ pub async fn run_wine_command<I: IntoIterator<Item = T>, T: AsRef<OsStr>>(
 
     if let Some(cwd) = cwd {
         child.current_dir(cwd);
-    } else if arg.to_string_lossy().contains("/") { // Some games (like Mass Effect LE) require the working directory to be set to the game directory, other it crashes
+    } else if arg.to_string_lossy().contains("/") {
+        // Some games (like Mass Effect LE) require the working directory to be set to the game directory, other it crashes
         let mut cwd_dir = PathBuf::from(arg.clone());
         cwd_dir.pop();
         info!("Setting current working directory to: {:?}", cwd_dir);

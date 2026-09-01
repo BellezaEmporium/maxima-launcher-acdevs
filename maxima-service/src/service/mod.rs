@@ -5,7 +5,7 @@ use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::Duration;
 
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, post, web};
 use log::{error, info};
 use maxima::core::background_service::{
     BACKGROUND_SERVICE_PORT, ServiceLibraryInjectionRequest, ServiceTouchupRequest,
@@ -17,8 +17,7 @@ use maxima::util::service::SERVICE_NAME;
 use structured_logger::json::new_writer;
 use tokio::sync::oneshot;
 use windows_service::service::{
-    ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
-    ServiceType,
+    ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
 };
 use windows_service::{
     service_control_handler::{self, ServiceControlHandlerResult},
@@ -173,9 +172,8 @@ fn bootstrap_service(_arguments: Vec<OsString>) -> Result<(), ServerError> {
             let _ = stop_tx.send(());
             let _ = _handle.join();
 
-            status_handle.set_service_status(stopped_status(ServiceExitCode::Win32(
-                ERROR_TIMEOUT,
-            )))?;
+            status_handle
+                .set_service_status(stopped_status(ServiceExitCode::Win32(ERROR_TIMEOUT)))?;
 
             return Err(ServerError::BindTimeout);
         }
@@ -208,10 +206,8 @@ fn bootstrap_service(_arguments: Vec<OsString>) -> Result<(), ServerError> {
                 Ok(Event::Exited(Err(error))) => {
                     error!("HTTP server failed unexpectedly: {error}");
 
-                    let win32_code = error
-                        .raw_os_error()
-                        .unwrap_or(ERROR_UNEXPECTED_EXIT as i32)
-                        as u32;
+                    let win32_code =
+                        error.raw_os_error().unwrap_or(ERROR_UNEXPECTED_EXIT as i32) as u32;
 
                     break (false, ServiceExitCode::Win32(win32_code));
                 }
@@ -295,7 +291,9 @@ async fn req_touchup(body: web::Bytes) -> Result<HttpResponse, ServerError> {
         Path::new(&request.output_dir).join(maxima::core::manifest::MANIFEST_RELATIVE_PATH),
     )
     .await?;
-    manifest.run_touchup(Path::new(&request.output_dir), &request.slug).await?;
+    manifest
+        .run_touchup(Path::new(&request.output_dir), &request.slug)
+        .await?;
 
     Ok(HttpResponse::Ok().body("Done"))
 }

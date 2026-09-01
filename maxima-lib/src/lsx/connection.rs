@@ -318,7 +318,7 @@ impl Connection {
 
         let state = self.state.write().await;
 
-        let trimmed_buffer = &buffer[..(n-1)];
+        let trimmed_buffer = &buffer[..(n - 1)];
         let message = if let EncryptionState::Enabled(key) = state.encryption {
             simple_decrypt(trimmed_buffer, &key)
         } else {

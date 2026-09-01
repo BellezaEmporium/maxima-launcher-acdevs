@@ -246,7 +246,7 @@ pub async fn parse_registry_path_regkey(key: &str) -> Result<PathBuf, RegistryEr
     Ok(path)
 }
 
-// [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe 
+// [HKEY_LOCAL_MACHINE\SOFTWARE\BioWare\Mass Effect Legendary Edition\Install Dir]Game\Launcher\MassEffectLauncher.exe
 // Will replace the registry key with the install dir and will only return that (IE will drop everything after the last ])
 #[cfg(windows)]
 pub async fn parse_partial_registry_path(key: &str) -> Result<PathBuf, RegistryError> {

@@ -2,8 +2,8 @@ use crate::{content::exclusion::get_exclusion_list, core::manifest::handle_touch
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
@@ -114,7 +114,10 @@ impl DownloadQueue {
             Err(err) => {
                 // Keep the corrupt file for inspection instead of silently discarding it
                 let backup = file.with_extension("json.bak");
-                error!("Corrupt download queue, backing up to {}: {err}", backup.display());
+                error!(
+                    "Corrupt download queue, backing up to {}: {err}",
+                    backup.display()
+                );
                 let _ = fs::rename(&file, &backup).await;
                 Ok(Self::default())
             }
@@ -175,8 +178,7 @@ impl GameDownloader {
         let downloader = ZipDownloader::new(url.url()).await?;
         let exclusion_list = get_exclusion_list(&game.slug());
         let mut entries = Vec::new();
-        for ele in downloader.manifest().entries() 
-        {
+        for ele in downloader.manifest().entries() {
             // TODO: Filtering
             if exclusion_list.is_match(&ele.name()) {
                 // info!("Excluding file from download: {}", ele.name()); Spams if a lot of files are excluded
@@ -458,7 +460,11 @@ impl ContentManager {
             return Ok(()); // already at the top
         }
 
-        let Some(index) = self.queue.queued.iter().position(|g| g.offer_id() == offer_id)
+        let Some(index) = self
+            .queue
+            .queued
+            .iter()
+            .position(|g| g.offer_id() == offer_id)
         else {
             return Ok(()); // not in the queue at all
         };

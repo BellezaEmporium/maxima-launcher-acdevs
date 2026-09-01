@@ -42,7 +42,8 @@ pub async fn wine_get_pid(
         module_path()?
             .safe_parent()?
             .join("wine-helper.exe")
-            .safe_str()?.into(),
+            .safe_str()?
+            .into(),
         Some(vec!["get_pid", b64.as_str()]),
         None,
         true,
@@ -85,7 +86,8 @@ pub async fn request_library_injection(
         module_path()?
             .safe_parent()?
             .join("wine-helper.exe")
-            .safe_str()?.into(),
+            .safe_str()?
+            .into(),
         Some(vec!["inject", b64.as_str()]),
         None,
         false,

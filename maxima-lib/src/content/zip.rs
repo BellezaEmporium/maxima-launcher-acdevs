@@ -1,9 +1,9 @@
 use bytebuffer::{ByteBuffer, Endian};
 use derive_getters::Getters;
-use encoding_rs::{WINDOWS_1252};
+use encoding_rs::WINDOWS_1252;
 use log::{debug, warn};
-use reqwest::header::ToStrError;
 use reqwest::Client;
+use reqwest::header::ToStrError;
 use std::cmp;
 use std::string::FromUtf8Error;
 use thiserror::Error;
@@ -419,7 +419,7 @@ impl ZipFile {
                         idx: i,
                         total: eocd.total_entries,
                         err: format!("{:?}", err).to_string(),
-                    })
+                    });
                 }
                 Ok(e) => e,
             };

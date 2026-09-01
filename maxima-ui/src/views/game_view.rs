@@ -291,8 +291,7 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                     );
                 }
 
-                if hero_vis_frac < 1.0
-                {
+                if hero_vis_frac < 1.0 {
                     let full_tint = if ui.is_enabled() {
                         Color32::from_black_alpha(20)
                     } else {
@@ -300,7 +299,8 @@ pub fn game_view_details_panel(app: &mut MaximaEguiApp, ui: &mut Ui) {
                     };
                     let fade_tint = Color32::from_black_alpha(0);
 
-                    let bottom_y = hero_rect.left_bottom() - vec2(0.0, hero_rect.height() * hero_vis_frac);
+                    let bottom_y =
+                        hero_rect.left_bottom() - vec2(0.0, hero_rect.height() * hero_vis_frac);
 
                     let mut mesh = Mesh::default();
                     // bottom edge fades to transparent — reads as the hero "dissolving"

@@ -12,8 +12,9 @@ use super::{
     RtmError,
     connection::RtmConnectionManager,
     proto::{
-        BasicPresenceType, HeartbeatV1, LoginV3Response, Player, PresenceUpdateV1, PresenceSubscribeAllFriendsV1,
-        RichPresenceType, RichPresenceV1, SessionCleanupV1, communication_v1, success_v1,
+        BasicPresenceType, HeartbeatV1, LoginV3Response, Player, PresenceSubscribeAllFriendsV1,
+        PresenceUpdateV1, RichPresenceType, RichPresenceV1, SessionCleanupV1, communication_v1,
+        success_v1,
     },
 };
 use crate::{
@@ -172,9 +173,7 @@ impl RtmClient {
                     return Ok(());
                 }
 
-                let res: ClientVersion = serde_json::from_str(
-                    &presence.client_version,
-                )?;
+                let res: ClientVersion = serde_json::from_str(&presence.client_version)?;
 
                 if res.client_type != "Client" && res.client_type != "LegacyClient" {
                     return Ok(());
@@ -249,8 +248,8 @@ impl RtmClient {
     pub async fn set_presence(
         &mut self,
         basic_presence: BasicPresence,
-        game_name: &str,        // e.g. "Apex Legends"
-        offer_id: &str,         // e.g. "Origin.OFR.50.0002148"
+        game_name: &str, // e.g. "Apex Legends"
+        offer_id: &str,  // e.g. "Origin.OFR.50.0002148"
     ) -> Result<(), RtmError> {
         let rpc_data = CustomRichPresenceData {
             game_product_id: offer_id.to_owned(),
@@ -290,7 +289,11 @@ impl RtmClient {
     }
 
     /// Subscribe to a list of user IDs' presences
-    pub async fn subscribe(&mut self, persona: Vec<String>, players: &[String]) -> Result<(), RtmError> {
+    pub async fn subscribe(
+        &mut self,
+        persona: Vec<String>,
+        players: &[String],
+    ) -> Result<(), RtmError> {
         send_and_forget_rtm_request!(self.conn_man, PresenceSubscribe, PresenceSubscribeV1, {
             persona_id: vec![],
             players: players.iter().map(|id| Player{ player_id: id.to_owned(), product_id: String::from("origin"), }).collect()
@@ -298,9 +301,13 @@ impl RtmClient {
         .await
     }
 
-    
     pub async fn subscribe_all(&mut self) -> Result<(), RtmError> {
-        send_and_forget_rtm_request!(self.conn_man, PresenceSubscribeAllFriendsV1, PresenceSubscribeAllFriendsV1, {})
+        send_and_forget_rtm_request!(
+            self.conn_man,
+            PresenceSubscribeAllFriendsV1,
+            PresenceSubscribeAllFriendsV1,
+            {}
+        )
         .await
     }
 

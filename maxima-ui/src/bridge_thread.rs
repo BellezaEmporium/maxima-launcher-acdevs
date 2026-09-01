@@ -1,10 +1,10 @@
-use maxima::core::manifest::handle_touchup_request;
-use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::mpsc::UnboundedReceiver;
 use egui::{Context, Key::W};
 use log::{error, info, warn};
+use maxima::core::manifest::handle_touchup_request;
 use thiserror::Error;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::unbounded_channel;
 
 use crate::{
     GameDetails, GameInfo, GameSettings,
