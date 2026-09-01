@@ -7,7 +7,6 @@ use anyhow::{bail, Result};
 use inquire::{Select, Text};
 use log::{debug, error, info, warn};
 use regex::Regex;
-use reqwest;
 
 use std::{
     path::PathBuf, sync::{Arc, LazyLock}, time::Instant,
@@ -367,9 +366,9 @@ async fn interactive_start_game(maxima_arc: LockedMaxima) -> Result<()> {
 
 async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
     let mut maxima = maxima_arc.lock().await;
+    let mut owned_games = Vec::new();
 
     let game = {
-        let mut owned_games = Vec::new();
         for game in maxima.mut_library().games().await? {
             if game.base_offer().is_installed().await {
                 continue;
@@ -382,64 +381,80 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
             .map(|g| g.name())
             .collect::<Vec<String>>();
 
-        let name =
-            Select::new("What game would you like to install?", owned_games_strs).prompt()?;
+        let name = tokio::task::spawn_blocking(move || {
+            Select::new("What game would you like to install?", owned_games_strs).prompt()
+        })
+        .await??;
+
         owned_games
             .iter()
             .find(|g| g.name() == name)
             .unwrap()
-            .clone()
     };
 
     let offer_id = game.base_offer().offer_id().to_owned();
     let slug = game.base_offer().slug().to_owned();
+
+    let mut maxima = maxima_arc.lock().await;
 
     let builds = maxima
         .content_manager()
         .service()
         .available_builds(&offer_id)
         .await?;
-    let build = builds.live_build();
-    if build.is_none() {
+
+    let available_live_build = builds.live_build();
+    if available_live_build.is_none() {
         bail!("Couldn't find a suitable game build");
     }
 
-    let build = build.unwrap();
+    let build = available_live_build.unwrap();
     info!("Installing game build {}", build.to_string());
 
     let path = PathBuf::from(
-        Text::new("Where would you like to install the game? (must be an absolute path)")
-            .prompt()?,
+        tokio::task::spawn_blocking(|| {
+            Text::new("Where would you like to install the game? (must be an absolute path)").prompt()
+        })
+        .await??,
     );
-
-    #[cfg(unix)]
-    let wine_prefix = {
-        let input =
-            Text::new("Where do you want to store the Wine prefix? (must be an absolute path)")
-                .prompt()?;
-        PathBuf::from(input)
-    };
-
-    #[cfg(not(unix))]
-    let wine_prefix = PathBuf::new();
-
     if !path.is_absolute() {
         error!("Path {:?} is not absolute.", path);
         return Ok(());
     }
 
+    #[cfg(unix)]
+    let wine_prefix = {
+        let input = tokio::task::spawn_blocking(|| {
+            Text::new("Where do you want to store the Wine prefix? (must be an absolute path)").prompt()
+        })
+        .await??;
+        let p = PathBuf::from(input);
+        if !p.is_absolute() {
+            error!("Wine prefix {:?} is not absolute.", p);
+            return Ok(());
+        }
+        Some(p)
+    };
+
+    #[cfg(not(unix))]
+    let wine_prefix = None;
+
     let game = QueuedGameBuilder::default()
         .offer_id(offer_id)
         .build_id(build.build_id().to_owned())
         .path(path.clone())
-        .slug(slug) // Needs the slug here for the manifest touchup after installation, which needs to know the wine prefix path
-        .wine_prefix(Some(wine_prefix))
+        .slug(slug)
+        .wine_prefix(wine_prefix)
         .build()?;
 
     let start_time = Instant::now();
     maxima.content_manager().install_now(game).await?;
 
     drop(maxima);
+
+    const IDLE_TICK_LIMIT: usize = 5;
+    let mut idle_ticks = 0usize;
+    let mut saw_downloader = false;
 
     loop {
         let mut maxima = maxima_arc.lock().await;
@@ -454,9 +469,16 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
         maxima.update().await;
 
         if let Some(downloader) = maxima.content_manager().current() {
+            saw_downloader = true;
+            idle_ticks = 0;
             info!("Downloading: {:.1}%/100%, {} bytes out of {}", downloader.percentage_done(), downloader.completed_bytes(), downloader.bytes_total());
-        } else {
+        } else if saw_downloader {
             break;
+        } else {
+            idle_ticks += 1;
+            if idle_ticks >= IDLE_TICK_LIMIT {
+                bail!("Installer produced no download activity");
+            }
         }
 
         drop(maxima);
@@ -465,7 +487,7 @@ async fn interactive_install_game(maxima_arc: LockedMaxima) -> Result<()> {
 
     let elapsed_time = Instant::now() - start_time;
     info!(
-        "Download took {}.{}s",
+        "Download took {}.{:03}s",
         elapsed_time.as_secs(),
         elapsed_time.subsec_millis()
     );

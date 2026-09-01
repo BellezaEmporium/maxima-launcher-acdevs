@@ -17,7 +17,7 @@ use crate::{
     util::native::{NativeError, SafeStr, maxima_dir},
 };
 use derive_getters::Getters;
-use log::info;
+use log::{debug, info};
 use std::{collections::HashMap, path::PathBuf, time::SystemTimeError};
 use thiserror::Error;
 
@@ -118,17 +118,16 @@ impl OwnedOffer {
             None => return Err(LibraryError::NoManifest(self.slug.clone())),
         };
 
-        let path = if let Some(path) = manifest.execute_path(trial) {
-            &Some(path)
-        } else {
-            self.offer.execute_path_override()
+        let raw = manifest
+            .execute_path(trial)
+            .map(|p| p.to_owned())
+            .or_else(|| self.offer.execute_path_override().clone());
+
+        let Some(raw) = raw else {
+            return Err(LibraryError::NoPath(self.slug.clone()));
         };
 
-        if let Some(path) = path {
-            Ok(parse_registry_path_json(path, Some(&self.slug)).await?)
-        } else {
-            Err(LibraryError::NoPath(self.slug.clone()))
-        }
+        Ok(parse_registry_path_json(&raw, Some(&self.slug)).await?)
     }
 
     pub async fn installed_version(&self) -> Result<String, LibraryError> {

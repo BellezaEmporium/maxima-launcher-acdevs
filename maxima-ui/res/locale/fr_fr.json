@@ -95,6 +95,7 @@
         "game_installation" : {
             "header": "Installation du jeu",
             "default_folder": "Dossier d'installation par défaut",
+            "default_wine_prefix": "Préfixe Wine par défaut",
             "ignore_ood_warning": "Ignorer l'avertissement de lancement de jeu obsolète"
         },
         "performance" : {
